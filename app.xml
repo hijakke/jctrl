@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<app xmlns="http://jctrl.org/schema/urimap" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+	<default for=".view" path="views/" dataType="xml" viewType="html" />
+	<default for=".language" dataType="xml" path="language/" />
+
+	<bean id="cn" class="language">
+		<url>cn/default.xml</url>
+	</bean>
+
+	<bean id="en" class="language">
+		<url>en/default.xml</url>
+	</bean>
+
+	<bean id="home" class="view" require="#default_template" />
+
+	<list id="default_template">
+		<bean class="js" url="home.js" />
+	</list>
+
+	<import resource="test/map.xml" />
+
+</app>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<app xmlns="http://jctrl.org/schema/urimap" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+	<map>
+		<entry key="{x}" to="{x}">
+		</entry>
+	</map>
+	
+</app>
