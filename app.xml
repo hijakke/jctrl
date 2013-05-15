@@ -18,6 +18,6 @@
 		<bean class="js" url="home.js" />
 	</list>
 
-	<import resource="test/map.xml" />
+	<import resource="map.xml" />
 
 </app>
