@@ -331,17 +331,17 @@ Connector = function() {
 	};
 },
 
-Map = function($map) {
+Map = function($map, app) {
 
 	var keyreg = /{([^}]+)}/g, 
 	key = $map.attr("key"), 
 	path_vars = [], 
 	exp, temp, 
 	hasdef = false, 
-	views = this.views = [];
-
-	this.data = $map.attr("data");
-	this.pathValues = {};
+	views = [],
+	path_data= new Data(app.data());
+	
+	this.data = $map.attr("data"),
 	this.dataType = $map.attr("dataType");
 
 	while (( temp = keyreg.exec(key)) !== null) {
@@ -349,15 +349,27 @@ Map = function($map) {
 	}
 
 	this.match = function(name) {
-		var matched_values = exp.exec(name);
+		var matched_values = exp.exec(name),
+		path_values = {};
+		
 		if (!matched_values) {
 			return false;
 		}
 		for (var i = 0; i < path_vars.length; i++) {
-			this.pathValues[path_vars[i]] = matched_values[i + 1];
+			path_values[path_vars[i]] = matched_values[i + 1];
 		}
+		path_data.set(path_values);
 		return true;
 	};
+	
+	this.on = function(status){
+		for (var i = 0; i < views.length; i++) {
+			if (views[i].on === status || path_data.el(views[i].on) === true) {
+				return  path_data.el(views[i].to);
+			}
+		}
+		throw new Error("No accepted view found on status: " + status);
+	}
 
 	exp = new RegExp("^" + key.replace(/(\?|\.|^\*\*\/|\/\*\*\/|\*+|{\w+}|\/)/g, function(pattern) {
 		switch (pattern) {
@@ -395,9 +407,6 @@ Map = function($map) {
 			on : "success",
 			to : key
 		});
-	}
-	if (!this.dataType) {
-		this.dataType = default_datatype;
 	}
 },
 
@@ -553,9 +562,38 @@ Tag = function() {
 	};
 },
 
+Controller = function(app) {
+
+	var self = this, 	
+	connector = new Connector(),
+	
+	load_data = function(url, dataType, callback) {
+		
+		if (!url) {
+			callback.call(self, "success");
+			return;
+		}
+		
+		connector.load(url, Adapter.get(dataType)).ready(function(got, error){
+			if(error.length>0){
+				callback.call(self, "error");
+				return;
+			}
+			app.data().set(got[0]);
+			callback.call(self, "success");
+		});
+	};
+	
+	this.load = function($container, key){
+		var map = app.map(key);
+		
+	}
+}, 
+
 App = function($app){	
 	
 	var views = [],
+	maps = [],
 	_session = {},
 	sys_data = new Data(),
 	app_data = new Data(sys_data),
@@ -565,6 +603,10 @@ App = function($app){
 	
 	$app.find("bean.view").each(function(){
 		views.push(new View($(this), $app));
+	});
+	
+	$app.find("map entry").each(function() {
+		maps.push(new Map($(this), app));
 	});
 	
 	this.data = function(which){
@@ -590,6 +632,14 @@ App = function($app){
 			sys_data.set(langs[name]);
 		}
 	};
+	this.map = function(key){
+		for (var i = 0; i < maps.length; i++) {
+			if (maps[i].match(type)) {
+				return maps[i];
+			}
+		}
+		throw new Error("No urlMap found");
+	}
 },
 
 jCtrl = new function jCtrl(){
@@ -615,8 +665,9 @@ jCtrl = new function jCtrl(){
 		var app, langs = {},
 		connector = new Connector(),
 		lang_connector = new Connector(),
-		r_path = /^(.*\/)?/,
+		r_path = /^(.*\/)?/,		
 		$app  = $($.parseXML("<app/>")).find("app"),
+		
 		set_ifnull = function(dom, default_setter, attrs){
 			for(var i =0; i <attrs.length;i++){
 				if(default_setter.attr(attrs[i]) && ! dom.attr(attrs[i])){
@@ -624,6 +675,7 @@ jCtrl = new function jCtrl(){
 				}
 			}
 		},
+		
 		load_config = function(urls){
 			connector.load(urls).ready(function(cfgs){
 				var imports = [], i, path, import_url;
