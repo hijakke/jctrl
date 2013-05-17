@@ -339,7 +339,7 @@ Map = function($map, app) {
 	exp, temp, 
 	hasdef = false, 
 	views = [],
-	path_data= new Data(app.data());
+	path_data= {};
 	
 	this.data = $map.attr("data"),
 	this.dataType = $map.attr("dataType");
@@ -358,14 +358,20 @@ Map = function($map, app) {
 		for (var i = 0; i < path_vars.length; i++) {
 			path_values[path_vars[i]] = matched_values[i + 1];
 		}
-		path_data.set(path_values);
+		
+		if(!path_data[name]){
+			path_data[name] = new Data(app.data());
+		}
+		
+		path_data[name].set(path_valies);
+		
 		return true;
 	};
 	
-	this.on = function(status){
+	this.on = function(name, status){
 		for (var i = 0; i < views.length; i++) {
 			if (views[i].on === status || path_data.el(views[i].on) === true) {
-				return  path_data.el(views[i].to);
+				return  path_data[name].el(views[i].to);
 			}
 		}
 		throw new Error("No accepted view found on status: " + status);
@@ -606,7 +612,7 @@ App = function($app){
 	});
 	
 	$app.find("map entry").each(function() {
-		maps.push(new Map($(this), app));
+		maps.push(new Map($(this), this));
 	});
 	
 	this.data = function(which){
