@@ -438,7 +438,7 @@ View = function($view, $app, app) {
 		dataType : dataType,
 		viewType : viewType,
 		dom : null,
-		require:requires
+		requires : []
 	},
 	connector = new Connector(),
 	
@@ -450,15 +450,17 @@ View = function($view, $app, app) {
 		
 		var bean_path = $dom.attr("path");
 		
-		if( $dom.is(".js") || $dom.is(".css")){											
+    	if ($dom.is(".view")) {
+    		requires.push($dom.attr("id"));
+		} else if ($dom.is(".js") || $dom.is(".css")) {
 
-			if($dom.is(".js")){
-				scripts.push((bean_path || path)+ $dom.attr("url"));
-			}else{
-				styles.push((bean_path || path)+ $dom.attr("url"));
+			if ($dom.is(".js")) {
+				scripts.push((bean_path || path) + $dom.attr("url"));
+			} else {
+				styles.push((bean_path || path) + $dom.attr("url"));
 			}
-		}else if($dom.children().size()>0){
-			$dom.children().each(function(){
+		} else if ($dom.children().size() > 0) {
+			$dom.children().each(function() {
 				load_require($(this));
 			});
 		}
@@ -613,7 +615,7 @@ Controller = function(app) {
 		view_loaded = 0,
 		
 		view_load_ready = function(){
-			if(view.property("require") + 1  > ++view_loaded ){
+			if(view.property("requires").length + 1  > ++view_loaded ){
 				return;
 			}
 			alert(1);
@@ -625,8 +627,8 @@ Controller = function(app) {
 			
 			view.load(view_load_ready);
 			
-			for ( var i = 0; i < view.property("require").length; i++) {
-				app.view(view.property("require")[i]).load(view_load_ready);
+			for ( var i = 0; i < view.property("requires").length; i++) {
+				app.view(view.property("requires")[i]).load(view_load_ready);
 			}
 			
 			
