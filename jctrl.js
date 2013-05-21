@@ -37,7 +37,7 @@ var Data = function(data) {
 		} catch (e) {
 			if (e.name === "TypeError") {
 				return undefined;
-			}
+			}j
 			throw new Error("Uncorrect arguments");
 		}
 
@@ -339,10 +339,9 @@ Map = function($map, app) {
 	exp, temp, 
 	hasdef = false, 
 	views = [],
-	path_data= {};
-	
-	this.data = $map.attr("data"),
-	this.dataType = $map.attr("dataType");
+	path_data= {},
+	data = $map.attr("data"),
+	dataType = $map.attr("dataType");
 
 	while (( temp = keyreg.exec(key)) !== null) {
 		path_vars.push(temp[1]);
@@ -363,18 +362,26 @@ Map = function($map, app) {
 			path_data[name] = new Data(app.data());
 		}
 		
-		path_data[name].set(path_valies);
+		path_data[name].set(path_values);
 		
 		return true;
 	};
 	
 	this.on = function(name, status){
 		for (var i = 0; i < views.length; i++) {
-			if (views[i].on === status || path_data.el(views[i].on) === true) {
+			if (views[i].on === status || path_data[name].el(views[i].on) === true) {
 				return  path_data[name].el(views[i].to);
 			}
 		}
 		throw new Error("No accepted view found on status: " + status);
+	};
+	
+	this.data = function(name){
+		return path_data[name].el(data);
+	}
+	
+	this.dataType = function(){
+		return dataType;
 	}
 
 	exp = new RegExp("^" + key.replace(/(\?|\.|^\*\*\/|\/\*\*\/|\*+|{\w+}|\/)/g, function(pattern) {
@@ -416,7 +423,7 @@ Map = function($map, app) {
 	}
 },
 
-View = function($view, $app) {
+View = function($view, $app, app) {
 	var id = $view.attr("id"),
  	dataType = $view.attr("dataType"), 
  	viewType = $view.attr("viewType"), 
@@ -429,7 +436,9 @@ View = function($view, $app) {
 		scripts : scripts,
 		styles : styles,
 		dataType : dataType,
-		viewType : viewType
+		viewType : viewType,
+		dom : null,
+		require:requires
 	},
 	connector = new Connector(),
 	
@@ -475,10 +484,11 @@ View = function($view, $app) {
 		load_require($(this));
 	});
 	
-	this.on = function(fn){
+	this.load = function(callback){
 		
-		var variables = {}, script_head = "",
-		head = document.getElementsByTagName("head")[0];
+		connector.load(properties.url, Adapter.get(viewType)).ready(function(doms){
+			properties.dom = doms[0];
+		});
 		
 		connector.load(scripts).ready(function(texts){
 			script_texts = texts;
@@ -507,22 +517,26 @@ View = function($view, $app) {
 			}
 		});
 		
-		connector.clear(function(){
-			for(var j in variables){
-				script_head += "var " + j + " = arguments[0]['" + j + "'];\n";
-			}
-			script_head += "var session = arguments[1];\n";
-			
-			for(var i = 0; i<script_texts.length;i++){
-				script_texts[i] = script_head + script_texts[i];
-				(new Function(script_texts[i])).call(window, variables, {});
-			}
-			
-			for (var i = 0; i < style_doms.length; i++) {
-				head.appendChild(style_doms[i]);
-			}
-			
-		});
+		connector.clear(callback);
+	};
+	
+	this.on = function(){
+		
+		var variables = {}, script_head = "",
+		head = document.getElementsByTagName("head")[0];
+		
+		for(var j in variables){
+			script_head += "var " + j + " = arguments[0]['" + j + "'];\n";
+		}
+		script_head += "var session = arguments[1];\n";
+		
+		for(var i = 0; i<script_texts.length;i++){
+			(new Function(script_texts[i])).call(window, variables, {});
+		}
+		
+		for (var i = 0; i < style_doms.length; i++) {
+			head.appendChild(style_doms[i]);
+		}
 	};
 	
 	this.off = function() {
@@ -591,14 +605,42 @@ Controller = function(app) {
 	};
 	
 	this.load = function($container, key){
-		var map = app.map(key);
+		
+		var map = app.map(key),
+		
+		view,
+		
+		view_loaded = 0,
+		
+		view_load_ready = function(){
+			if(view.property("require") + 1  > ++view_loaded ){
+				return;
+			}
+			alert(1);
+		};
+		
+		load_data(map.data(key), map.dataType(), function(status){
+			
+			view = app.view(map.on(key, status));
+			
+			view.load(view_load_ready);
+			
+			for ( var i = 0; i < view.property("require").length; i++) {
+				app.view(view.property("require")[i]).load(view_load_ready);
+			}
+			
+			
+			
+			
+		});
 		
 	}
 }, 
 
 App = function($app){	
 	
-	var views = [],
+	var self = this,
+	views = [],
 	maps = [],
 	_session = {},
 	sys_data = new Data(),
@@ -612,8 +654,10 @@ App = function($app){
 	});
 	
 	$app.find("map entry").each(function() {
-		maps.push(new Map($(this), this));
+		maps.push(new Map($(this), self));
 	});
+	
+	this.ctr = new Controller(this);
 	
 	this.data = function(which){
 		return which === "sys" ? sys_data : app_data;
@@ -626,6 +670,7 @@ App = function($app){
 			_session[key] = value;
 		}
 	};
+	
 	this.lang = function(name, obj){
 		if(obj){
 			if(!langs[name]){
@@ -638,14 +683,23 @@ App = function($app){
 			sys_data.set(langs[name]);
 		}
 	};
+	
 	this.map = function(key){
 		for (var i = 0; i < maps.length; i++) {
-			if (maps[i].match(type)) {
+			if (maps[i].match(key)) {
 				return maps[i];
 			}
 		}
 		throw new Error("No urlMap found");
-	}
+	};
+	
+	this.view = function(key) {
+		for ( var i = 0; i < views.length; i++) {
+			if (views[i].match(key)) {
+				return views[i];
+			}
+		}
+	};
 },
 
 jCtrl = new function jCtrl(){
