@@ -37,7 +37,7 @@ var Data = function(data) {
 		} catch (e) {
 			if (e.name === "TypeError") {
 				return undefined;
-			}j
+			}
 			throw new Error("Uncorrect arguments");
 		}
 
@@ -378,11 +378,11 @@ Map = function($map, app) {
 	
 	this.data = function(name){
 		return path_data[name].el(data);
-	}
+	};
 	
 	this.dataType = function(){
 		return dataType;
-	}
+	};
 
 	exp = new RegExp("^" + key.replace(/(\?|\.|^\*\*\/|\/\*\*\/|\*+|{\w+}|\/)/g, function(pattern) {
 		switch (pattern) {
@@ -432,6 +432,7 @@ View = function($view, $app, app) {
  	styles = [],
 	requires = $view.attr("require")? $view.attr("require").split(",") : [],
 	properties = {
+		id : id,
 		url : path + ($view.attr("url") || id + "." + viewType) ,
 		scripts : scripts,
 		styles : styles,
@@ -520,6 +521,8 @@ View = function($view, $app, app) {
 		});
 		
 		connector.clear(callback);
+		
+		return this;
 	};
 	
 	this.on = function(){
@@ -608,35 +611,72 @@ Controller = function(app) {
 	
 	this.load = function($container, key){
 		
-		var map = app.map(key),
+		var map = app.map(key),		
+		view,		
+		view_id,
 		
-		view,
+		$wrapper = $("<div></div>"),
 		
 		view_loaded = 0,
 		
+		required_views = {},
+		
+		append_dom = function($parent, $child){
+			
+			
+		},
+		
 		view_load_ready = function(){
+			
 			if(view.property("requires").length + 1  > ++view_loaded ){
 				return;
 			}
-			alert(1);
+
+			//建立视图(View)之间的关联关系
+			for(var i in required_views){
+				
+				required_views[i].$dom = $(required_views[i].property("dom"));
+				required_views[i].$dom.find("[require]").each(function(){
+					
+					var required_view_id = $(this).attr("require"), 
+					require_view = required_views[required_view_id];
+
+					//如果依赖视图包含了请求视图，则认为依赖视图为入口
+					if(view_id == required_view_id || require_view.entry){
+						required_views[required_view_id].entry = true;
+					}
+					//设置 依赖
+					required_views[i].requires.push(require_view);
+					require_view.parents.push(required_views[i]);
+					
+				});
+			}
+			
 		};
+		
 		
 		load_data(map.data(key), map.dataType(), function(status){
 			
-			view = app.view(map.on(key, status));
+			view_id = map.on(key, status);
+			
+			view = app.view(view_id);
 			
 			view.load(view_load_ready);
 			
-			for ( var i = 0; i < view.property("requires").length; i++) {
-				app.view(view.property("requires")[i]).load(view_load_ready);
+			var require_list = view.property("requires");
+			
+			for ( var i = 0; i < require_list.length; i++) {
+				
+				required_views[require_list[i]] = { 
+						view: app.view(require_list[i]).load(view_load_ready),
+						$dom : null,
+						parents :[],
+						entry : false,
+						requires : []
+				};				
 			}
-			
-			
-			
-			
 		});
-		
-	}
+	};
 }, 
 
 App = function($app){	
