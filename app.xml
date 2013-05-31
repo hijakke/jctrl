@@ -12,7 +12,9 @@
 		<url>en/default.xml</url>
 	</bean>
 
-	<bean id="home" class="view" require="#default_template" />
+	<bean id="home" class="view" require="#default_template,#empty" />
+	
+	<bean id="empty" class="view"/>
 
 	<list id="default_template">
 		<bean class="js" url="home.js" />

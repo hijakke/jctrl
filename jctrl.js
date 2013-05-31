@@ -452,7 +452,7 @@ View = function($view, $app, app) {
 		var bean_path = $dom.attr("path");
 		
     	if ($dom.is(".view")) {
-    		requires.push($dom.attr("id"));
+    		properties.requires.push($dom.attr("id"));
 		} else if ($dom.is(".js") || $dom.is(".css")) {
 
 			if ($dom.is(".js")) {
@@ -460,7 +460,7 @@ View = function($view, $app, app) {
 			} else {
 				styles.push((bean_path || path) + $dom.attr("url"));
 			}
-		} else if ($dom.children().size() > 0) {
+		} else if ($dom.is("list")) {	
 			$dom.children().each(function() {
 				load_require($(this));
 			});
@@ -476,7 +476,7 @@ View = function($view, $app, app) {
 				styles.push(path + id + ".css");
 				break;
 			default:
-				$app.find(requires[i].replace(/\//g,"\\/") + ">" ).each(function(){
+				$app.find(requires[i].replace(/\//g,"\\/")).each(function(){
 					load_require($(this));
 				});
 				
@@ -607,75 +607,98 @@ Controller = function(app) {
 			app.data().set(got[0]);
 			callback.call(self, "success");
 		});
+	},
+	filter = function($dom, selector){
+		var result = $dom.find(selector);
+		$dom.filter(selector).each(function(){
+				result.push(this);
+		});
+		return result;
 	};
 	
 	this.load = function($container, key){
-		
-		var map = app.map(key),		
-		view,		
-		view_id,
-		
-		$wrapper = $("<div></div>"),
-		
-		view_loaded = 0,
-		
+		var map = app.map(key),	
+		$wrapper = $("<div></div>"),		
+		view_loaded_count = 0,		
 		required_views = {},
+		request_view,
 		
-		append_dom = function($parent, $child){
+		append_dom = function($parent, view){
+
+			$parent.append(view.$dom);
 			
-			
+			for(var i = 0; i<view.requires; i++){
+				
+				var query_str = "[require="	+ view.requires[i].view.property("id") + "]";
+				
+				append_dom(filter(view.$dom, query_str), view.requires[i]);
+			}
 		},
 		
 		view_load_ready = function(){
 			
-			if(view.property("requires").length + 1  > ++view_loaded ){
+			if(request_view.property("requires").length + 1  > ++view_loaded_count ){
 				return;
 			}
+			var entry_view;
 
-			//建立视图(View)之间的关联关系
 			for(var i in required_views){
 				
-				required_views[i].$dom = $(required_views[i].property("dom"));
-				required_views[i].$dom.find("[require]").each(function(){
+				required_views[i].$dom = $(required_views[i].view.property("dom"));
+				filter(required_views[i].$dom, "[require]").each(function(){
 					
 					var required_view_id = $(this).attr("require"), 
-					require_view = required_views[required_view_id];
+					required_view = required_views[required_view_id];
 
-					//如果依赖视图包含了请求视图，则认为依赖视图为入口
-					if(view_id == required_view_id || require_view.entry){
-						required_views[required_view_id].entry = true;
+					if(required_view.entry){
+						required_views[i].entry = true;
+						required_view.entry = false;
 					}
-					//设置 依赖
-					required_views[i].requires.push(require_view);
-					require_view.parents.push(required_views[i]);
+					required_views[i].requires.push(required_view);
 					
 				});
+
+				if(required_views[i].entry){
+					entry_view = required_views[i];
+				}
+			}
+			
+			append_dom($wrapper, entry_view);
+			
+			$container.append($wrapper.children());
+			
+			for(var i in required_views){
+				required_views[i].view.on();
 			}
 			
 		};
 		
-		
 		load_data(map.data(key), map.dataType(), function(status){
 			
-			view_id = map.on(key, status);
+			var entry_view_id = map.on(key, status),			
+				entry_view = app.view(entry_view_id).load(view_load_ready),				
+				required_id_list = entry_view.property("requires");
 			
-			view = app.view(view_id);
+			request_view = entry_view;
 			
-			view.load(view_load_ready);
-			
-			var require_list = view.property("requires");
-			
-			for ( var i = 0; i < require_list.length; i++) {
+			for ( var i = 0; i < required_id_list.length; i++) {
 				
-				required_views[require_list[i]] = { 
-						view: app.view(require_list[i]).load(view_load_ready),
+				required_views[required_id_list[i]] = { 
+						view: app.view(required_id_list[i]).load(view_load_ready),
 						$dom : null,
-						parents :[],
 						entry : false,
 						requires : []
 				};				
 			}
+			
+			required_views[entry_view_id] = { 
+					view: entry_view,
+					$dom : null,
+					entry : true,
+					requires : []
+			};	
 		});
+		
 	};
 }, 
 
