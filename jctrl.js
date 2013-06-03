@@ -585,6 +585,11 @@ Tag = function() {
 	this.match = function(name) {
 		return this.matchTag(this.matchNS(name));
 	};
+	
+	this.parse = function($element, app_data, local_datas) {
+		
+		
+	};
 },
 
 Controller = function(app) {
@@ -858,6 +863,84 @@ jCtrl = new function jCtrl(){
 	
 };
 
+
+//TODO: Extend Tag
+
+$.extend(Tag, {
+	ns: (function(){
+		var ns = {};
+		if (document.namespaces) {
+			for ( var i = 0; i < document.namespaces.length; i++) {
+				ns[document.namespaces[i].name] = document.namespaces[i].urn;
+			}
+		} else {
+			var attrs = $("html")[0].attributes;
+			for ( var i = 0; i < attrs.length; i++) {
+				var attr = /xmlns:(\w+)$/.exec(attrs[i].name);
+				if(attr){
+					ns[attr[1]] = attrs[i].value;
+				}
+			}
+		}
+		return ns;
+	})(),
+	lib : [],
+	get :  function(name) {
+		for (var i = 0; i < Tag.lib.length; i++) {
+			if (Tag.lib[i].match(name)) {
+				return Tag.lib[i];
+			}
+		}
+	},
+	parse : function($element, app_data, script_vars) {
+		
+
+		// Tag.tns = {}, attrs = $element[0].attributes;
+// 
+		// for (var i = 0; i < attrs.length; i++) {
+			// var attr = /xmlns:(\w+)$/.exec(attrs[i].name);
+			// if (attr) {
+				// Tag.tns[attr[1]] = attrs[i].value;
+			// }
+		// }
+
+		
+		(function parse($ele, app_data) {
+			
+			//Add scopeName propertity for IE
+			var	scopeName =  (!$ele.prop("scopeName") || $ele.prop("scopeName") === "HTML")
+				? "" : $ele.prop("scopeName") + ":";
+			
+			var tag_name = (scopeName + $ele.prop("tagName") || "" ).toLowerCase();
+			
+			var j, tag = Tag.get(tag_name);
+
+			if (tag) {
+				var replaced = tag.parse($ele, app_data, script_vars);				
+				
+				if (tag.isContainer) {
+					var subs = replaced.size() > 1 ? replaced : replaced.children();
+					for ( j = 0; j < subs.size(); j++) {
+						parse(subs.eq(j), app_data);
+					}
+				}
+			} else {
+
+				var subs = $ele.children();
+				if (subs.size() === 0) {
+					return;
+				}
+
+				for ( j = 0; j < subs.size(); j++) {
+					parse(subs.eq(j));
+				}
+			}
+		})($element, app_data, app_data);
+		
+	}
+});
+
+
 //TODO: Extend Adapter 
 $.extend(Adapter,{
 	instances : [],
@@ -946,6 +1029,20 @@ jCtrl.extend("Adapter", function() {
 
 	this.handle = function(html) {
 		return $(html);
+	};
+})
+
+// Text Tag
+.extend("Tag", function(){
+	this.ns = "";
+	this.matchTag = function(name){
+		return /^span|h[1-6]$/.test(name);
+	};
+	this.handle = function($element, data){
+		$element.text(data.get());
+	};
+	this.update = function($element, data) {
+		$element.text(data.get());
 	};
 });
 // })(window, jQuery);
