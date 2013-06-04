@@ -2,11 +2,9 @@
 
 	<j:foreach var="test" begin="1" end="5">
 		<span data-bind="{test}"></span>
-		<div>zzz</div>
-		<input type="button" value="BIND" />
-		<span data-bind="{title}"></span>
+		:
+		<span data-bind="{test+title}"></span>
 	</j:foreach>
-
 
 	<span data-bind="{title}"></span>
 
@@ -16,5 +14,7 @@
 	</j:xa>
 
 	<input type="button" value="BIND" />
+
+	<div require="empty"></div>
 
 </div>

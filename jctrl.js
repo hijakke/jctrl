@@ -959,8 +959,7 @@ $.extend(Tag, {
 //			 }
 //		 }
 
-		
-		(function parse($ele, app_data) {
+		var parse = function ($ele, app_data) {
 			
 			//Add scopeName propertity for IE
 			var	scopeName =  (!$ele.prop("scopeName") || $ele.prop("scopeName") === "HTML")
@@ -990,7 +989,17 @@ $.extend(Tag, {
 					parse(subs.eq(j), app_data);
 				}
 			}
-		})($element, app_data);
+		};
+		
+		if ($element.size() > 1) {
+			for (var i = 0; i < $element.size(); i++) {
+				parse($element.eq(i), app_data);
+			}
+		} else {
+			parse($element, app_data);
+		}
+
+
 		
 	}
 });
@@ -1123,7 +1132,7 @@ jCtrl.extend("Adapter", function() {
 	this.name = "foreach";
 	this.parseChild = false;
 	this.handle = function(binding) {
-		
+	
 		element = binding.element;
 		
 		var attr_var = element.attr("var"), 
@@ -1141,7 +1150,7 @@ jCtrl.extend("Adapter", function() {
 			new_element.append(temp_child_element);
 		}
 
-		return new_element.children();
+		return new_element.contents();
 
 	};
 	this.update = function() {
