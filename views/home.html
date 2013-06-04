@@ -1,14 +1,20 @@
 <div xmlns:j="http://jctrl.org/tags">
 
-	<j:foreach var="test" begin="1" end="3">	
-		<span data-bind="{test}"></span>			
+	<j:foreach var="test" begin="1" end="5">
+		<span data-bind="{test}"></span>
+		<div>zzz</div>
+		<input type="button" value="BIND" />
+		<span data-bind="{title}"></span>
 	</j:foreach>
 
-	<j:xa href="index" >
+
+	<span data-bind="{title}"></span>
+
+	<j:xa href="index">
 		goto index
-		<span data-bind="{local.x}"></span>
-	</j:xa>	
-	
+		<span data-bind="{title}"></span>
+	</j:xa>
+
 	<input type="button" value="BIND" />
-	
+
 </div>

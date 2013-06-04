@@ -191,7 +191,9 @@ Adapter = function() {
 	};
 
 	// abstract method
-	this.handle = function(){};
+	this.handle = function(){
+		throw new Error("Unimplemented method");
+	};
 },
 
 //download and cache files
@@ -563,7 +565,7 @@ View = function($view, $app, app) {
 
 Tag = function() {
 	this.ns = "http://jctrl.org/tags";
-	this.isContainer = false;
+	this.parseChild = true;
 	
 	//get tag name defined in namespace
 	this.matchNS = function(name){
@@ -586,9 +588,58 @@ Tag = function() {
 		return this.matchTag(this.matchNS(name));
 	};
 	
-	this.parse = function($element, app_data, local_datas) {
+	this.parse = function($element, app_data, local_data) {
 		
+		var self = this,
+		binding ={
+			element : $element,
+			app_data : app_data,
+			local_data : local_data,
+			bind_exp : $element.attr("data-bind"),
+			update : function(){
+				self.update(binding);
+			}
+		},
 		
+		fk_exp = /^local\.([^.]*)(?:\.(.*))?$/, fk_exp_rs;
+		
+		app_data.el(binding.bind_exp),
+		
+		has_app_data_flag = false;
+		
+		for ( var i = 0; i < app_data.keys.length; i++) {
+			fk_exp_rs = fk_exp.exec(app_data.keys[i]);
+			if(fk_exp_rs){
+				//generate a new Data object if first appeared
+				if(!local_data[fk_exp_rs[1]]){
+					local_data[fk_exp_rs[1]] = new Data();
+				}
+				local_data[fk_exp_rs[1]].update(binding);
+			}
+			else{
+				has_app_data_flag = true;
+			}
+		}
+		
+		var rt = this.handle(binding) || $element;
+		
+		binding.element = rt;
+		
+		if($element !== rt && $element[0] !== rt[0]){
+			$element.replaceWith(rt);
+		}
+		
+		if(has_app_data_flag){
+			app_data.update(binding);
+		}
+		
+		return rt;
+		
+	};
+
+	// abstract method
+	this.update = function(){
+		throw new Error("Unimplemented method");
 	};
 },
 
@@ -669,6 +720,9 @@ Controller = function(app) {
 			}
 			
 			append_dom($wrapper, entry_view);
+			
+			
+			Tag.parse($wrapper, app.data(), []);
 			
 			$container.append($wrapper.children());
 			
@@ -867,6 +921,7 @@ jCtrl = new function jCtrl(){
 //TODO: Extend Tag
 
 $.extend(Tag, {
+	tns : [],
 	ns: (function(){
 		var ns = {};
 		if (document.namespaces) {
@@ -884,25 +939,25 @@ $.extend(Tag, {
 		}
 		return ns;
 	})(),
-	lib : [],
+	instances : [],
 	get :  function(name) {
-		for (var i = 0; i < Tag.lib.length; i++) {
-			if (Tag.lib[i].match(name)) {
-				return Tag.lib[i];
+		for (var i = 0; i < Tag.instances.length; i++) {
+			if (Tag.instances[i].match(name)) {
+				return Tag.instances[i];
 			}
 		}
 	},
 	parse : function($element, app_data, script_vars) {
 		
 
-		// Tag.tns = {}, attrs = $element[0].attributes;
+//		 Tag.tns = {}, attrs = $element[0].attributes;
 // 
-		// for (var i = 0; i < attrs.length; i++) {
-			// var attr = /xmlns:(\w+)$/.exec(attrs[i].name);
-			// if (attr) {
-				// Tag.tns[attr[1]] = attrs[i].value;
-			// }
-		// }
+//		 for (var i = 0; i < attrs.length; i++) {
+//			 var attr = /xmlns:(\w+)$/.exec(attrs[i].name);
+//			 if (attr) {
+//				 Tag.tns[attr[1]] = attrs[i].value;
+//			 }
+//		 }
 
 		
 		(function parse($ele, app_data) {
@@ -918,7 +973,7 @@ $.extend(Tag, {
 			if (tag) {
 				var replaced = tag.parse($ele, app_data, script_vars);				
 				
-				if (tag.isContainer) {
+				if (tag.parseChild) {
 					var subs = replaced.size() > 1 ? replaced : replaced.children();
 					for ( j = 0; j < subs.size(); j++) {
 						parse(subs.eq(j), app_data);
@@ -932,10 +987,10 @@ $.extend(Tag, {
 				}
 
 				for ( j = 0; j < subs.size(); j++) {
-					parse(subs.eq(j));
+					parse(subs.eq(j), app_data);
 				}
 			}
-		})($element, app_data, app_data);
+		})($element, app_data);
 		
 	}
 });
@@ -1038,11 +1093,87 @@ jCtrl.extend("Adapter", function() {
 	this.matchTag = function(name){
 		return /^span|h[1-6]$/.test(name);
 	};
-	this.handle = function($element, data){
-		$element.text(data.get());
+	this.handle = function(binding){
+		binding.element.text(binding.app_data.el(binding.bind_exp));
 	};
-	this.update = function($element, data) {
-		$element.text(data.get());
+	this.update = function(binding) {
+		binding.element.text(binding.app_data.el(binding.bind_exp));
 	};
+})
+
+//View Tag 
+.extend("Tag", function() {
+	this.name = "xa";
+	this.handle = function(binding) {
+
+		var href = /^#?([^?]+)?/.exec( binding.element.attr("href") || "" )[1] || "" ;
+		var new_element = $("<a href='#" + href + "'></a>");
+		new_element.click(function(){
+			var curView = /^#?([^?]+)?/.exec(location.hash)[1];
+			if(href && curView !== href ){
+				binding.app.loadView($("#container"), href);
+			}
+		}).html(binding.element.html());
+		return new_element;
+	};
+})
+
+//TODO: Extend Tag
+.extend("Tag", function() {
+	this.name = "foreach";
+	this.parseChild = false;
+	this.handle = function(binding) {
+		
+		element = binding.element;
+		
+		var attr_var = element.attr("var"), 
+		begin = element.attr("begin"), 
+		end = element.attr("end"), 
+		child_element = element.html(), 
+		new_element = $("<div></div>"), i;
+
+		for (i = begin; i <= end; i++) {
+			var child_data = new Data(binding.app_data);
+			child_data.define(attr_var);
+			child_data.set(attr_var, i);
+			var temp_child_element = $(child_element);
+			Tag.parse(temp_child_element, child_data, []);
+			new_element.append(temp_child_element);
+		}
+
+		return new_element.children();
+
+	};
+	this.update = function() {
+
+	};
+})
+
+.extend("Tag", function() {
+	this.name = "xinput";
+	this.handle = function(binding) {
+		
+		var new_element = $("<input type=\"text\"/>");
+
+		new_element.attr("style", "padding-left:5px;font-size: 18px;" 
+				+ "height: 32px;border: 1px solid #666;border-radius: 4px;line-height: 32px;").focus(function() {
+			if (new_element.val() === String(binding.app_data.get())) {
+				new_element.val("");
+				new_element.css("color", "#000");
+			}
+		}).blur(function() {
+			if (new_element.val() === "" || new_element.val() === String(binding.app_data.get())) {
+				new_element.val(String(binding.app_data.get()));
+				new_element.css("color", "#999");
+			}
+		}).val(String(binding.app_data.get())).css("color", "#999");
+		
+		return new_element;
+	};
+	
+	this.update = function(binding){
+		binding.element.val(String(binding.data.get())).css("color", "#999");
+	};
+	
 });
 // })(window, jQuery);
