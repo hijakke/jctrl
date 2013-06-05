@@ -90,6 +90,14 @@ var Data = function(data) {
 		return (new Function("return " + el)).apply(window, values);
 	};
 	
+	if(data instanceof Data){
+		chain = data;
+		pool = {json : {}};
+		chain.update(self);
+	}else{
+		pool = {json : data || {}};
+	}
+	
 	this.keys = [];
 	
 	this.get = function(){
@@ -152,16 +160,7 @@ var Data = function(data) {
 				update_fns[i].update();
 			}
 		}
-	};
-	
-	if(data instanceof Data){
-		chain = data;
-		pool = {json : {}};
-		chain.update(self);
-	}else{
-		pool = {json : data || {}};
-	}
-	
+	};	
 },
 
 Adapter = function() {
@@ -181,7 +180,7 @@ Adapter = function() {
 				callback.call(self, result);
 				
 				if(errors.length > 0){
-					errors.call(self);
+					error.call(self);
 				}
 			}
 			catch(e){
@@ -431,18 +430,26 @@ View = function($view, $app, app) {
  	viewType = $view.attr("viewType"), 
  	path = $view.attr("path")  || "", 
  	scripts = [], 
- 	styles = [],
+ 	styles = [], 	
+ 	local_data = [],
+ 	
 	requires = $view.attr("require")? $view.attr("require").split(",") : [],
-	properties = {
+	
+	//public properties
+	attributes = {
 		id : id,
 		url : path + ($view.attr("url") || id + "." + viewType) ,
 		scripts : scripts,
 		styles : styles,
 		dataType : dataType,
 		viewType : viewType,
+		html : "",
 		dom : null,
 		requires : []
 	},
+	
+	dom_instances = [],
+	
 	connector = new Connector(),
 	
 	style_doms = [],
@@ -454,7 +461,7 @@ View = function($view, $app, app) {
 		var bean_path = $dom.attr("path");
 		
     	if ($dom.is(".view")) {
-    		properties.requires.push($dom.attr("id"));
+    		attributes.requires.push($dom.attr("id"));
 		} else if ($dom.is(".js") || $dom.is(".css")) {
 
 			if ($dom.is(".js")) {
@@ -491,8 +498,9 @@ View = function($view, $app, app) {
 	
 	this.load = function(callback){
 		
-		connector.load(properties.url, Adapter.get(viewType)).ready(function(doms){
-			properties.dom = doms[0];
+		connector.load(attributes.url, Adapter.get(viewType)).ready(function(html){
+			attributes.html = "<div>" + html[0] +"</div>"; 
+			attributes.dom = $(attributes.html);
 		});
 		
 		connector.load(scripts).ready(function(texts){
@@ -529,16 +537,16 @@ View = function($view, $app, app) {
 	
 	this.on = function(){
 		
-		var variables = {}, script_head = "",
+		var script_head = "",
 		head = document.getElementsByTagName("head")[0];
 		
-		for(var j in variables){
+		for(var j in local_data){
 			script_head += "var " + j + " = arguments[0]['" + j + "'];\n";
 		}
 		script_head += "var session = arguments[1];\n";
 		
 		for(var i = 0; i<script_texts.length;i++){
-			(new Function(script_texts[i])).call(window, variables, {});
+			(new Function(script_head + script_texts[i])).call(window, local_data, app.session);
 		}
 		
 		for (var i = 0; i < style_doms.length; i++) {
@@ -556,10 +564,20 @@ View = function($view, $app, app) {
 		return id === arguments[0];
 	};
 	
-	this.property = function(name){
-		return properties[name];
+	this.attr = function(key, value){
+		if(value){
+			attributes[key] = value;
+		}else{
+			return attributes[key];
+		}
 	};
 	
+	this.generate = function(){
+		var new_dom = attributes.dom.clone();
+		dom_instances.push(new_dom);
+		Tag.parse(new_dom, app, app.data(), local_data);
+		return new_dom.contents();
+	};
 	
 },
 
@@ -588,17 +606,16 @@ Tag = function() {
 		return this.matchTag(this.matchNS(name));
 	};
 	
-	this.parse = function($element, app_data, local_data) {
+	this.parse = function($element, app, app_data, local_data) {
 		
 		var self = this,
 		binding ={
 			element : $element,
+			app : app,
 			app_data : app_data,
 			local_data : local_data,
 			bind_exp : $element.attr("data-bind"),
-			update : function(){
-				self.update(binding);
-			}
+			update : self.update
 		},
 		
 		fk_exp = /^local\.([^.]*)(?:\.(.*))?$/, fk_exp_rs;
@@ -612,7 +629,7 @@ Tag = function() {
 			if(fk_exp_rs){
 				//generate a new Data object if first appeared
 				if(!local_data[fk_exp_rs[1]]){
-					local_data[fk_exp_rs[1]] = new Data();
+					local_data[fk_exp_rs[1]] = new Data("");
 				}
 				local_data[fk_exp_rs[1]].update(binding);
 			}
@@ -621,7 +638,7 @@ Tag = function() {
 			}
 		}
 		
-		var rt = this.handle(binding) || $element;
+		var rt = this.handle.call(binding) || $element;
 		
 		binding.element = rt;
 		
@@ -663,13 +680,6 @@ Controller = function(app) {
 			app.data().set(got[0]);
 			callback.call(self, "success");
 		});
-	},
-	filter = function($dom, selector){
-		var result = $dom.find(selector);
-		$dom.filter(selector).each(function(){
-				result.push(this);
-		});
-		return result;
 	};
 	
 	this.load = function($container, key){
@@ -678,86 +688,70 @@ Controller = function(app) {
 		view_loaded_count = 0,		
 		required_views = {},
 		request_view,
+		entry_view,
 		
 		append_dom = function($parent, view){
 
-			$parent.append(view.$dom);
+			var view_generated_dom = view.generate();
 			
-			for(var i = 0; i<view.requires; i++){
+			$parent.append(view_generated_dom);
+			
+			view_generated_dom.find("[require]").each(function(){
 				
-				var query_str = "[require="	+ view.requires[i].view.property("id") + "]";
-				
-				append_dom(filter(view.$dom, query_str), view.requires[i]);
-			}
+					append_dom($(this), required_views[$(this).attr("require")]);
+			});
 		},
 		
 		view_load_ready = function(){
 			
-			if(request_view.property("requires").length + 1  > ++view_loaded_count ){
+			if(request_view.attr("requires").length + 1  > ++view_loaded_count ){
 				return;
 			}
-			var entry_view;
 
 			for(var i in required_views){
-				
-				required_views[i].$dom = $(required_views[i].view.property("dom"));
-				filter(required_views[i].$dom, "[require]").each(function(){
+								
+				required_views[i].attr("dom").find("[require]").each(function(){
 					
 					var required_view_id = $(this).attr("require"), 
 					required_view = required_views[required_view_id];
-
-					if(required_view.entry){
-						required_views[i].entry = true;
-						required_view.entry = false;
-					}
-					required_views[i].requires.push(required_view);
 					
-				});
+					if(!required_view){
+						throw new Error("Required view: " + required_view_id + " not defined");
+					}
 
-				if(required_views[i].entry){
-					entry_view = required_views[i];
-				}
+					if(required_view == entry_view){
+						entry_view = required_views[i];
+					}		
+				});
 			}
 			
 			append_dom($wrapper, entry_view);
 			
-			
-			Tag.parse($wrapper, app.data(), []);
-			
-			$container.append($wrapper.children());
+			$container.append($wrapper.contents());
 			
 			for(var i in required_views){
-				required_views[i].view.on();
+				required_views[i].on();
 			}
 			
 		};
 		
 		load_data(map.data(key), map.dataType(), function(status){
 			
-			var entry_view_id = map.on(key, status),			
-				entry_view = app.view(entry_view_id).load(view_load_ready),				
-				required_id_list = entry_view.property("requires");
-			
+			var entry_view_id = map.on(key, status);
+
+			entry_view = app.view(entry_view_id).load(view_load_ready);
 			request_view = entry_view;
+			
+			var required_id_list = entry_view.attr("requires");
 			
 			for ( var i = 0; i < required_id_list.length; i++) {
 				
-				required_views[required_id_list[i]] = { 
-						view: app.view(required_id_list[i]).load(view_load_ready),
-						$dom : null,
-						entry : false,
-						requires : []
-				};				
+				required_views[required_id_list[i]] = app.view(required_id_list[i]).load(view_load_ready);
 			}
 			
-			required_views[entry_view_id] = { 
-					view: entry_view,
-					$dom : null,
-					entry : true,
-					requires : []
-			};	
+			required_views[entry_view_id] = entry_view;
+			
 		});
-		
 	};
 }, 
 
@@ -774,7 +768,7 @@ App = function($app){
 	app_data.set({session:{}, model:{}});
 	
 	$app.find("bean.view").each(function(){
-		views.push(new View($(this), $app));
+		views.push(new View($(this), $app, self));
 	});
 	
 	$app.find("map entry").each(function() {
@@ -947,7 +941,7 @@ $.extend(Tag, {
 			}
 		}
 	},
-	parse : function($element, app_data, script_vars) {
+	parse : function($element, app, app_data, local_data) {
 		
 
 //		 Tag.tns = {}, attrs = $element[0].attributes;
@@ -970,7 +964,7 @@ $.extend(Tag, {
 			var j, tag = Tag.get(tag_name);
 
 			if (tag) {
-				var replaced = tag.parse($ele, app_data, script_vars);				
+				var replaced = tag.parse($ele, app, app_data, local_data);				
 				
 				if (tag.parseChild) {
 					var subs = replaced.size() > 1 ? replaced : replaced.children();
@@ -999,8 +993,6 @@ $.extend(Tag, {
 			parse($element, app_data);
 		}
 
-
-		
 	}
 });
 
@@ -1036,7 +1028,7 @@ jCtrl.extend("Adapter", function() {
 				}
 			}
 		} else if (xml.nodeType == 3) { // text
-			obj = xml.nodeValue.trim(); // add trim here
+			obj = $.trim(xml.nodeValue); // add trim here
 		}
 		
 		if (xml.hasChildNodes()) {
@@ -1092,7 +1084,7 @@ jCtrl.extend("Adapter", function() {
 	this.type = "html";
 
 	this.handle = function(html) {
-		return $(html);
+		return html;
 	};
 })
 
@@ -1102,19 +1094,21 @@ jCtrl.extend("Adapter", function() {
 	this.matchTag = function(name){
 		return /^span|h[1-6]$/.test(name);
 	};
-	this.handle = function(binding){
-		binding.element.text(binding.app_data.el(binding.bind_exp));
+	this.handle = function(){
+		var binding = this;
+		binding.element.text(binding.app_data.el(binding.bind_exp, binding.local_data));
 	};
-	this.update = function(binding) {
-		binding.element.text(binding.app_data.el(binding.bind_exp));
+	this.update = function() {
+		var binding = this;
+		binding.element.text(binding.app_data.el(binding.bind_exp, binding.local_data));
 	};
 })
 
 //View Tag 
 .extend("Tag", function() {
 	this.name = "xa";
-	this.handle = function(binding) {
-
+	this.handle = function() {
+		var binding = this;
 		var href = /^#?([^?]+)?/.exec( binding.element.attr("href") || "" )[1] || "" ;
 		var new_element = $("<a href='#" + href + "'></a>");
 		new_element.click(function(){
@@ -1131,23 +1125,23 @@ jCtrl.extend("Adapter", function() {
 .extend("Tag", function() {
 	this.name = "foreach";
 	this.parseChild = false;
-	this.handle = function(binding) {
-	
-		element = binding.element;
-		
-		var attr_var = element.attr("var"), 
-		begin = element.attr("begin"), 
-		end = element.attr("end"), 
-		child_element = element.html(), 
-		new_element = $("<div></div>"), i;
+	this.handle = function() {
+		var binding = this;
+		var	element = binding.element,
+		attr_var = element.attr("var"),
+		begin = Number(binding.app_data.el(element.attr("begin"))), 
+		end = Number(binding.app_data.el(element.attr("end"))), 
+		new_element = $("<div></div>");
 
-		for (i = begin; i <= end; i++) {
+		for (var i = begin; i <= end; i++) {
+			
 			var child_data = new Data(binding.app_data);
 			child_data.define(attr_var);
 			child_data.set(attr_var, i);
-			var temp_child_element = $(child_element);
-			Tag.parse(temp_child_element, child_data, []);
+			
+			var temp_child_element = element.contents().clone();
 			new_element.append(temp_child_element);
+			Tag.parse(temp_child_element, binding.app, child_data, binding.local_data);
 		}
 
 		return new_element.contents();
@@ -1160,8 +1154,8 @@ jCtrl.extend("Adapter", function() {
 
 .extend("Tag", function() {
 	this.name = "xinput";
-	this.handle = function(binding) {
-		
+	this.handle = function() {
+		var binding = this;
 		var new_element = $("<input type=\"text\"/>");
 
 		new_element.attr("style", "padding-left:5px;font-size: 18px;" 
@@ -1180,7 +1174,8 @@ jCtrl.extend("Adapter", function() {
 		return new_element;
 	};
 	
-	this.update = function(binding){
+	this.update = function(){
+		var binding = this;
 		binding.element.val(String(binding.data.get())).css("color", "#999");
 	};
 	
