@@ -1,16 +1,15 @@
 <div xmlns:j="http://jctrl.org/tags">
 
-
 	<j:foreach var="i" begin="1" end="33">
-		<j:foreach var="j" begin="1" end="{i}">
-			<span data-bind="{j * local.x}"></span>
-		</j:foreach>
-		<br />
+		<div style="white-space:nowrap;">
+			<j:foreach var="j" begin="1" end="{i}">
+				<span data-bind="{j * local.x}"></span>
+			</j:foreach>
+		</div>
 	</j:foreach>
 
-
 	<j:xa href="index">
-		goto 
+		goto
 		<span data-bind="{title}"></span>
 	</j:xa>
 

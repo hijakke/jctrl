@@ -820,6 +820,50 @@ App = function($app){
 	};
 },
 
+LoggerFactory = (function(){
+	
+	var instance = null,	
+	
+	Logger = function(){
+		var statistics = {};
+		
+		this.start = function(clazz) {
+			if (!statistics[clazz]) {
+				statistics[clazz] = {};
+			}
+			statistics[clazz].start = new Date().valueOf();
+		}
+	
+		this.end = function(clazz) {
+			if (!statistics[clazz]) {
+				statistics[clazz] = {};
+			}
+			statistics[clazz].end = new Date().valueOf();
+			if(statistics[clazz].start){
+				statistics[clazz].use = statistics[clazz].end - statistics[clazz].start;
+			}
+		}
+	
+		this.report = function(){
+			return statistics;
+		}
+	};
+	
+	return new function(){
+		this.DEBUG = {};
+		this.INFO = {};
+		
+		this.level = this.DEBUG;
+		
+		this.getLogger = function(){
+			if(!instance){
+				instance = new Logger();
+			}
+			return instance;
+		}
+	};
+})(),
+
 jCtrl = new function jCtrl(){
 	
 	this.extend = function(abst, impl) {
@@ -955,12 +999,19 @@ $.extend(Tag, {
 
 		var parse = function ($ele, app_data) {
 			
-			//Add scopeName propertity for IE
-			var	scopeName =  (!$ele.prop("scopeName") || $ele.prop("scopeName") === "HTML")
-				? "" : $ele.prop("scopeName") + ":";
-			
-			var tag_name = (scopeName + $ele.prop("tagName") || "" ).toLowerCase();
-			
+			var	tag_name = $ele.prop("tagName");	
+			if(tag_name){
+				tag_name = tag_name.toLowerCase();
+			}	
+						
+			//Add scopeName propertity for IE	
+			if($ele.prop("scopeName")){
+				var	scope_name = $ele.prop("scopeName") === "HTML" ? "" : $ele.prop("scopeName") + ":";
+				if(tag_name && tag_name.search(scope_name) == -1){
+					tag_name = scope_name + tag_name;
+				}
+			}		
+
 			var j, tag = Tag.get(tag_name);
 
 			if (tag) {
