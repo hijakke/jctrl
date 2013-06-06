@@ -127,6 +127,7 @@ var Data = function(data) {
 
 	//parse el expression in string
 	this.el = function(str, fk_list) {
+		LogFactory.getLog("Data").begin("el");
 		try {
 			self.keys = [];
 			
@@ -143,6 +144,8 @@ var Data = function(data) {
 				}
 				return String(elval(exp_str, fk_list));
 			});
+
+			LogFactory.getLog("Data").end("el");
 			
 			return proto_result === undefined ? str : proto_result;
 			
@@ -156,9 +159,11 @@ var Data = function(data) {
 		if(handler){
 			update_fns.push(handler);
 		}else{
+			LogFactory.getLog("Data").begin("Update");
 			for(var i = 0; i < update_fns.length; i++){
 				update_fns[i].update();
 			}
+			LogFactory.getLog("Data").end("Update");
 		}
 	};	
 },
@@ -530,7 +535,9 @@ View = function($view, $app, app) {
 			}
 		});
 		
-		connector.clear(callback);
+		connector.clear(function(){
+			callback(id);
+		});
 		
 		return this;
 	};
@@ -685,10 +692,11 @@ Controller = function(app) {
 	this.load = function($container, key){
 		var map = app.map(key),	
 		$wrapper = $("<div></div>"),		
-		view_loaded_count = 0,		
+		view_loaded_count = 0,
+		view_required_count = 0,
 		required_views = {},
-		request_view,
-		entry_view,
+		entry_view_id,
+		required_views_link = {},
 		
 		append_dom = function($parent, view){
 
@@ -702,29 +710,28 @@ Controller = function(app) {
 			});
 		},
 		
-		view_load_ready = function(){
+		view_load_ready = function(id){
 			
-			if(request_view.attr("requires").length + 1  > ++view_loaded_count ){
+			required_views[id].attr("dom").find("[require]").each(function(){
+				
+				var required_view_id = $(this).attr("require"), 
+				required_view = required_views[required_view_id];
+				
+				if(!required_view){
+					view_required_count++;
+					required_views[required_view_id] = app.view(required_view_id).load(view_load_ready);
+				}
+				required_views_link[required_view_id] = id;
+			});
+			
+			if(view_required_count  > ++view_loaded_count ){
 				return;
 			}
 
-			for(var i in required_views){
-								
-				required_views[i].attr("dom").find("[require]").each(function(){
-					
-					var required_view_id = $(this).attr("require"), 
-					required_view = required_views[required_view_id];
-					
-					if(!required_view){
-						throw new Error("Required view: " + required_view_id + " not defined");
-					}
-
-					if(required_view == entry_view){
-						entry_view = required_views[i];
-					}		
-				});
+			while(required_views_link[entry_view_id]){
+				entry_view_id = required_views_link[entry_view_id];
 			}
-			
+			var entry_view = required_views[entry_view_id];
 			append_dom($wrapper, entry_view);
 			
 			$container.append($wrapper.contents());
@@ -737,16 +744,26 @@ Controller = function(app) {
 		
 		load_data(map.data(key), map.dataType(), function(status){
 			
-			var entry_view_id = map.on(key, status);
+			entry_view_id = map.on(key, status);
 
-			entry_view = app.view(entry_view_id).load(view_load_ready);
-			request_view = entry_view;
+			var entry_view = app.view(entry_view_id).load(view_load_ready),
+			required_id_list = entry_view.attr("requires");
+			//required views and self
+			view_required_count = required_id_list.length + 1;
 			
-			var required_id_list = entry_view.attr("requires");
-			
-			for ( var i = 0; i < required_id_list.length; i++) {
-				
+			for ( var i = 0; i < required_id_list.length; i++) {				
+				//load a required view
 				required_views[required_id_list[i]] = app.view(required_id_list[i]).load(view_load_ready);
+				//load required views by required view loaded
+				var current_required_id_list = required_views[required_id_list[i]].attr("requires");
+				
+				for(var j =0; j < current_required_id_list.length; j++){
+					//not loaded
+					if(!required_views[current_required_id_list[j]]){
+						view_required_count++;
+						required_views[current_required_id_list[j]] = app.view(current_required_id_list[j]).load(view_load_ready);
+					}
+				}
 			}
 			
 			required_views[entry_view_id] = entry_view;
@@ -820,6 +837,64 @@ App = function($app){
 	};
 },
 
+<<<<<<< HEAD
+LogFactory = (function(){
+
+	var statistics = {},
+	instance = {},
+ 	empty = {
+		begin : function() {},
+		end : function() {}
+	},
+	Log = function(clazz){
+		this.begin = function(fn) {
+			if(fn && !statistics[clazz][fn]){
+				statistics[clazz][fn] = {
+					hit : 0,
+					use : 0
+				};
+			}
+			statistics[clazz]["_start" + (fn || "")] = new Date().valueOf();
+		};
+	
+		this.end = function(fn) {
+			var start_key = "_start" + (fn || "");
+			if(!statistics[clazz][start_key]){
+				return;
+			}
+			var current = new Date().valueOf();
+			statistics[clazz].use+= current - statistics[clazz][start_key];
+			statistics[clazz].hit++;
+			if(fn){
+				statistics[clazz][fn].use += current - statistics[clazz][start_key];
+				statistics[clazz][fn].hit++;
+			}
+			delete statistics[clazz][start_key];
+		};
+	};
+	
+	return new function(){
+		
+		this.DEBUG = true;
+		
+		this.getLog = function(clazz){
+			if(!this.DEBUG){
+				return empty;
+			}
+			if(!instance[clazz]){
+				statistics[clazz] = {
+					hit : 0,
+					use : 0
+				};
+				instance[clazz] = new Log(clazz);
+			}
+			return instance[clazz];
+		};
+		
+		this.report = function(){
+			return JSON.stringify(statistics);
+		};
+=======
 LoggerFactory = (function(){
 	
 	var instance = null,	
@@ -861,6 +936,7 @@ LoggerFactory = (function(){
 			}
 			return instance;
 		}
+>>>>>>> 1d2480752f3b3dfec28b3148f361ac9a26392cac
 	};
 })(),
 
@@ -1146,12 +1222,16 @@ jCtrl.extend("Adapter", function() {
 		return /^span|h[1-6]$/.test(name);
 	};
 	this.handle = function(){
+		LogFactory.getLog("TextTag").begin("bind");
 		var binding = this;
 		binding.element.text(binding.app_data.el(binding.bind_exp, binding.local_data));
+		LogFactory.getLog("TextTag").end("bind");
 	};
 	this.update = function() {
+		LogFactory.getLog("TextTag").begin("update");
 		var binding = this;
 		binding.element.text(binding.app_data.el(binding.bind_exp, binding.local_data));
+		LogFactory.getLog("TextTag").end("update");
 	};
 })
 
@@ -1184,8 +1264,9 @@ jCtrl.extend("Adapter", function() {
 		end = Number(binding.app_data.el(element.attr("end"))), 
 		new_element = $("<div></div>");
 
+		LogFactory.getLog("TagEach").begin("handle");
 		for (var i = begin; i <= end; i++) {
-			
+			LogFactory.getLog("TagEach").begin("createEach");
 			var child_data = new Data(binding.app_data);
 			child_data.define(attr_var);
 			child_data.set(attr_var, i);
@@ -1193,8 +1274,9 @@ jCtrl.extend("Adapter", function() {
 			var temp_child_element = element.contents().clone();
 			new_element.append(temp_child_element);
 			Tag.parse(temp_child_element, binding.app, child_data, binding.local_data);
+			LogFactory.getLog("TagEach").end("createEach");
 		}
-
+		LogFactory.getLog("TagEach").end("handle");
 		return new_element.contents();
 
 	};
