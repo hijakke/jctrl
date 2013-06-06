@@ -3,7 +3,7 @@
 var Data = function(data) {
 	
 	var self = this, 
-	update_fns = [], 
+	updater = [], 
 	pool, 
 	chain,
 	
@@ -17,8 +17,20 @@ var Data = function(data) {
 		try {
 			var variable_name = /\w+/.exec(arguments[0])[0], 
 			key = "data.json" + format(arguments[0]);
+			
+			if(!self.has(variable_name)){
+				//define variable if variable not defined
+				if(arguments.length == 2){
+					self.define(variable_name);
+				}else{
+				// return undefined when variable not defined
+					return undefined;
+				}
+			}
 
-			if (!self.contains(variable_name) && chain ) {
+			//if variable not defined in itself
+			//then access the vaiable from upper scope
+			if (pool.json && !pool.json.hasOwnProperty(variable_name)) {
 				if(arguments.length == 2){
 					chain.set(arguments[0], arguments[1]);
 				}else{
@@ -27,12 +39,12 @@ var Data = function(data) {
 				return;
 			}
 
+			//if variable defined in itself
 			if (arguments.length == 2) {
 				(new Function("data", "value", key + "=value;"))(pool, arguments[1]);
 				self.update();
 			} else {
 				return (new Function("data", "return " + key))(pool);
-
 			}
 		} catch (e) {
 			if (e.name === "TypeError") {
@@ -118,11 +130,16 @@ var Data = function(data) {
 	};
 
 	this.define = function(key, value){
+		if(!pool.json){
+			pool.json = {};
+		}
 		pool.json[key] = value;
 	};
 	
-	this.contains = function(key){
-		return pool.json ? pool.json.hasOwnProperty(key) : false;
+	this.has = function(key){
+		return pool.json && pool.json.hasOwnProperty(key) ? true 
+			: chain ? chain.has(key) : false;
+
 	};
 
 	//parse el expression in string
@@ -157,11 +174,11 @@ var Data = function(data) {
 	
 	this.update = function(handler){
 		if(handler){
-			update_fns.push(handler);
+			updater.push(handler);
 		}else{
 			LogFactory.getLog("Data").begin("Update");
-			for(var i = 0; i < update_fns.length; i++){
-				update_fns[i].update();
+			for(var i = 0; i < updater.length; i++){
+				updater[i].update();
 			}
 			LogFactory.getLog("Data").end("Update");
 		}
@@ -837,7 +854,6 @@ App = function($app){
 	};
 },
 
-<<<<<<< HEAD
 LogFactory = (function(){
 
 	var statistics = {},
@@ -894,49 +910,6 @@ LogFactory = (function(){
 		this.report = function(){
 			return JSON.stringify(statistics);
 		};
-=======
-LoggerFactory = (function(){
-	
-	var instance = null,	
-	
-	Logger = function(){
-		var statistics = {};
-		
-		this.start = function(clazz) {
-			if (!statistics[clazz]) {
-				statistics[clazz] = {};
-			}
-			statistics[clazz].start = new Date().valueOf();
-		}
-	
-		this.end = function(clazz) {
-			if (!statistics[clazz]) {
-				statistics[clazz] = {};
-			}
-			statistics[clazz].end = new Date().valueOf();
-			if(statistics[clazz].start){
-				statistics[clazz].use = statistics[clazz].end - statistics[clazz].start;
-			}
-		}
-	
-		this.report = function(){
-			return statistics;
-		}
-	};
-	
-	return new function(){
-		this.DEBUG = {};
-		this.INFO = {};
-		
-		this.level = this.DEBUG;
-		
-		this.getLogger = function(){
-			if(!instance){
-				instance = new Logger();
-			}
-			return instance;
-		}
->>>>>>> 1d2480752f3b3dfec28b3148f361ac9a26392cac
 	};
 })(),
 
