@@ -29,7 +29,7 @@ var Data = function(data) {
 			}
 
 			//if variable not defined in itself
-			//then access the variable from upper scope
+			//then access the vaiable from upper scope
 			if (pool.json && !pool.json.hasOwnProperty(variable_name)) {
 				if(arguments.length == 2){
 					chain.set(arguments[0], arguments[1]);
