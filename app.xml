@@ -13,7 +13,6 @@
 	</bean>
 
 	<bean id="home" class="view" require=".js" />
-	<bean id="xsl" class="view" viewType="xsl" />
 
 	<import resource="map.xml" />
 

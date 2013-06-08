@@ -1173,53 +1173,6 @@ jCtrl.extend("Adapter", function() {
 	};
 })
 
-//xsl view adapter
-.extend("Adapter", function(){
-	
-	this.type = "xsl";
-	
-	this.handle = function(xsl) {
-		xsl = $($.parseXML(xsl));
-		var selector = "xsl\\:", 
-		templates = xsl.find(selector + "template");
-		
-		if(templates.size() == 0){
-			selector = "";
-			templates = xsl.find(selector + "template");
-		}
-		
-		if(templates.size() == 0 ){
-			return "";
-		}
-		
-		templates.each(function(){
-			var template = $(this),
-			match = template.attr("match").substr(1).replace(/\//g,".");
-			
-			template.find(selector + "value-of").each(function(){
-				var select = $(this).attr("select").replace(/\//g,".");
-				$(this).replaceWith($("<span data-bind='${"+ match+ select +"}'></span>"));
-			});
-			
-		});
-		if(window.XMLSerializer){
-			var xmls = new XMLSerializer(),result = [];
-			for(var i =0; i <templates[0].childNodes.length;i++){
-				result.push(xmls.serializeToString(templates[0].childNodes[i]));
-			}
-			return result.join("");
-		}else{
-			var result = [];
-			for(var i =0; i <templates[0].childNodes.length;i++){
-				result.push(templates[0].childNodes[i].xml);
-			}
-			return result.join("");
-		}
-	};
-	
-})
-
-
 //TODO: Extend Tag Parser
 
 // Text Tag
@@ -1333,27 +1286,27 @@ jCtrl.extend("Adapter", function() {
 
 		new_element.attr("style", "padding-left:5px;font-size: 18px;" 
 				+ "height: 32px;border: 1px solid #666;border-radius: 4px;line-height: 32px;").focus(function() {
-			if (new_element.val() === String(binding.app_data.get())) {
+			if (new_element.val() === String(binding.app_data.el(binding.bind_exp, binding.local_data))) {
 				new_element.val("");
 				new_element.css("color", "#000");
 			}
 		}).blur(function() {
-			if (new_element.val() === "" || new_element.val() === String(binding.app_data.get())) {
-				new_element.val(String(binding.app_data.get()));
+			if (new_element.val() === "" || new_element.val() === String(binding.app_data.el(binding.bind_exp, binding.local_data))) {
+				new_element.val(String(binding.app_data.el(binding.bind_exp, binding.local_data)));
 				new_element.css("color", "#999");
 			}
-		}).val(String(binding.app_data.get())).css("color", "#999");
+		}).val(String(binding.app_data.el(binding.bind_exp, binding.local_data))).css("color", "#999");
 		
 		return new_element;
 	};
 	
 	this.update = function(){
 		var binding = this;
-		binding.element.val(String(binding.data.get())).css("color", "#999");
+		binding.element.val(String(binding.app_data.el(binding.bind_exp, binding.local_data))).css("color", "#999");
 	};
 	
 });
 
 //window.jCtrl = jCtrl;
-
+//window.LogFactory = LogFactory;
 //})(window, jQuery);
