@@ -29,7 +29,7 @@ var Data = function(data) {
 			}
 
 			//if variable not defined in itself
-			//then access the vaiable from upper scope
+			//then access the variable from upper scope
 			if (pool.json && !pool.json.hasOwnProperty(variable_name)) {
 				if(arguments.length == 2){
 					chain.set(arguments[0], arguments[1]);
@@ -190,26 +190,6 @@ Adapter = function() {
 		return this.type === type;
 	};
 	
-	this.process = function(url, callback, error) {	
-		
-		var self = this;
-		
-		new Connector().load(url).ready(function(responses, errors){
-			try{
-				var result = self.handle(responses[0]) || responses[0];
-				
-				callback.call(self, result);
-				
-				if(errors.length > 0){
-					error.call(self);
-				}
-			}
-			catch(e){
-				throw e;
-			}
-		});
-	};
-
 	// abstract method
 	this.handle = function(){
 		throw new Error("Unimplemented method");
@@ -290,7 +270,7 @@ Connector = function() {
 					cached[this.orgin_url] = response;	
 
 					if(current.adapter){
-						response = current.adapter.handle(response) || response;
+						response = current.adapter.handle(response);
 					}
 					
 					current.dones.push(response);
@@ -607,6 +587,10 @@ View = function($view, $app, app) {
 Tag = function() {
 	this.ns = "http://jctrl.org/tags";
 	this.parseChild = true;
+
+	var abstract_method = function(){
+		throw new Error("Unimplemented method");
+	};
 	
 	//get tag name defined in namespace
 	this.matchNS = function(name){
@@ -654,7 +638,10 @@ Tag = function() {
 				if(!local_data[fk_exp_rs[1]]){
 					local_data[fk_exp_rs[1]] = new Data("");
 				}
-				local_data[fk_exp_rs[1]].update(binding);
+				
+				if(self.update != abstract_method){				
+					local_data[fk_exp_rs[1]].update(binding);
+				}
 			}
 			else{
 				has_app_data_flag = true;
@@ -669,18 +656,15 @@ Tag = function() {
 			$element.replaceWith(rt);
 		}
 		
-		if(has_app_data_flag){
+		if(has_app_data_flag && self.update != abstract_method){
 			app_data.update(binding);
 		}
 		
 		return rt;
 		
 	};
-
 	// abstract method
-	this.update = function(){
-		throw new Error("Unimplemented method");
-	};
+	this.update = abstract_method;
 },
 
 Controller = function(app) {
@@ -1189,6 +1173,55 @@ jCtrl.extend("Adapter", function() {
 	};
 })
 
+//xsl view adapter
+.extend("Adapter", function(){
+	
+	this.type = "xsl";
+	
+	this.handle = function(xsl) {
+		xsl = $($.parseXML(xsl));
+		var selector = "xsl\\:", 
+		templates = xsl.find(selector + "template");
+		
+		if(templates.size() == 0){
+			selector = "";
+			templates = xsl.find(selector + "template");
+		}
+		
+		if(templates.size() == 0 ){
+			return "";
+		}
+		
+		templates.each(function(){
+			var template = $(this),
+			match = template.attr("match").substr(1).replace(/\//g,".");
+			
+			template.find(selector + "value-of").each(function(){
+				var select = $(this).attr("select").replace(/\//g,".");
+				$(this).replaceWith($("<span data-bind='${"+ match+ select +"}'></span>"));
+			});
+			
+		});
+		if(window.XMLSerializer){
+			var xmls = new XMLSerializer(),result = [];
+			for(var i =0; i <templates[0].childNodes.length;i++){
+				result.push(xmls.serializeToString(templates[0].childNodes[i]));
+			}
+			return result.join("");
+		}else{
+			var result = [];
+			for(var i =0; i <templates[0].childNodes.length;i++){
+				result.push(templates[0].childNodes[i].xml);
+			}
+			return result.join("");
+		}
+	};
+	
+})
+
+
+//TODO: Extend Tag Parser
+
 // Text Tag
 .extend("Tag", function(){
 	this.ns = "";
@@ -1226,9 +1259,10 @@ jCtrl.extend("Adapter", function() {
 	};
 })
 
-//TODO: Extend Tag
 .extend("Tag", function() {
+	
 	this.name = "foreach";
+	//Self handle contents
 	this.parseChild = false;
 	this.handle = function() {
 		var binding = this;
@@ -1254,8 +1288,40 @@ jCtrl.extend("Adapter", function() {
 		return new_element.contents();
 
 	};
-	this.update = function() {
+})
 
+.extend("Tag", function(){
+	
+	this.name = "out";
+	
+	this.handle = function(){
+		var binding = this;
+		return $("<span></span>").text(binding.app_data.el(binding.element.attr("value")));		
+	};
+})
+
+.extend("Tag", function(){
+	
+	this.name = "choose";
+	
+	this.handle = function(){
+		return $("<span></span>");		
+	};
+})
+
+.extend("Tag", function(){
+	
+	this.name="if";
+	
+	this.handle = function(){
+		var binding = this,
+		test = this.element.attr("test");
+		
+		if(binding.app_data.el(test, binding.local_data) == true){
+			return this.element.contents();
+		}else{
+			this.element.remove();
+		}		
 	};
 })
 
@@ -1287,4 +1353,7 @@ jCtrl.extend("Adapter", function() {
 	};
 	
 });
-// })(window, jQuery);
+
+//window.jCtrl = jCtrl;
+
+//})(window, jQuery);

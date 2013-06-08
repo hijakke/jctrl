@@ -1,6 +1,6 @@
 <div xmlns:j="http://jctrl.org/tags">
 
-	<j:foreach var="i" begin="1" end="33">
+	<j:foreach var="i" begin="1" end="2">
 		<div style="white-space: nowrap;">
 			<j:foreach var="j" begin="1" end="{i}">
 				<span data-bind="{j * local.x }"></span>
@@ -10,9 +10,27 @@
 
 	<j:xa href="index">
 		goto
-		<span data-bind="{title}"></span>
+		<span data-bind="{local.x}"></span>
 	</j:xa>
 
+	<j:if test="{true}">
+		hasd
+	</j:if>
+
+	<j:xinput data-bind="{title}"></j:xinput>
+	<j:choose>
+		<j:when test="${user.generous}">
+			user.generous　is true.
+		</j:when>
+		<j:when test="${user.stingy}">
+			user.stingy is true.
+		</j:when>
+		<j:otherwise>
+			user.generous and user.stingy are false.
+		</j:otherwise>
+	</j:choose>
+
+	<j:out value="{title}" />
 	<input type="button" value="BIND" />
 
 </div>

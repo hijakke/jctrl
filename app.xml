@@ -3,17 +3,18 @@
 
 	<default for=".view" path="views/" dataType="xml" viewType="html" />
 	<default for=".language" dataType="xml" path="language/" />
-	
+
 	<bean id="en" class="language">
 		<url>en/default.xml</url>
 	</bean>
-	
+
 	<bean id="cn" class="language">
 		<url>cn/default.xml</url>
 	</bean>
-	
+
 	<bean id="home" class="view" require=".js" />
-	
+	<bean id="xsl" class="view" viewType="xsl" />
+
 	<import resource="map.xml" />
 
 </app>
