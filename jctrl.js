@@ -143,7 +143,6 @@ var Data = function(data) {
 
 	//parse el expression in string
 	this.el = function(str, fk_list) {
-		LogFactory.getLog("Data").begin("el");
 		try {
 			self.keys = [];
 			
@@ -160,8 +159,6 @@ var Data = function(data) {
 				}
 				return String(elval(exp_str, fk_list));
 			});
-
-			LogFactory.getLog("Data").end("el");
 			
 			return proto_result === undefined ? str : proto_result;
 			
@@ -175,11 +172,9 @@ var Data = function(data) {
 		if(handler){
 			updater.push(handler);
 		}else{
-			LogFactory.getLog("Data").begin("Update");
 			for(var i = 0; i < updater.length; i++){
 				updater[i].update();
 			}
-			LogFactory.getLog("Data").end("Update");
 		}
 	};	
 },
@@ -613,6 +608,36 @@ Tag = function() {
 		return this.matchTag(this.matchNS(name));
 	};
 	
+	this.bind = function(binding){
+		
+		var fk_exp = /^local\.([^.]*)(?:\.(.*))?$/, fk_exp_rs,
+		
+		has_app_data_flag = false;
+		
+		binding.app_data.el(binding.bind_exp);
+		
+		for ( var i = 0; i < binding.app_data.keys.length; i++) {
+			fk_exp_rs = fk_exp.exec(binding.app_data.keys[i]);
+			if(fk_exp_rs){
+				//generate a new Data object if first appeared
+				if(!binding.local_data[fk_exp_rs[1]]){
+					binding.local_data[fk_exp_rs[1]] = new Data("");
+				}
+				
+				if(binding.update != abstract_method){				
+					binding.local_data[fk_exp_rs[1]].update(binding);
+				}
+			}
+			else{
+				has_app_data_flag = true;
+			}
+		}
+		
+		if(has_app_data_flag && binding.update != abstract_method){
+			binding.app_data.update(binding);
+		}
+	};
+	
 	this.parse = function($element, app, app_data, local_data) {
 		
 		var self = this,
@@ -625,42 +650,21 @@ Tag = function() {
 			update : self.update
 		},
 		
-		fk_exp = /^local\.([^.]*)(?:\.(.*))?$/, fk_exp_rs;
+		rt = self.handle.call(binding);
 		
-		app_data.el(binding.bind_exp),
-		
-		has_app_data_flag = false;
-		
-		for ( var i = 0; i < app_data.keys.length; i++) {
-			fk_exp_rs = fk_exp.exec(app_data.keys[i]);
-			if(fk_exp_rs){
-				//generate a new Data object if first appeared
-				if(!local_data[fk_exp_rs[1]]){
-					local_data[fk_exp_rs[1]] = new Data("");
-				}
-				
-				if(self.update != abstract_method){				
-					local_data[fk_exp_rs[1]].update(binding);
-				}
-			}
-			else{
-				has_app_data_flag = true;
-			}
+		if(rt){
+			binding.element = typeof rt == "string" ? $("<div>" + rt + "</div>").contents()	: rt;
 		}
 		
-		var rt = this.handle.call(binding) || $element;
-		
-		binding.element = rt;
-		
-		if($element !== rt && $element[0] !== rt[0]){
-			$element.replaceWith(rt);
+		if(binding.bind_exp){
+			self.bind(binding);
 		}
 		
-		if(has_app_data_flag && self.update != abstract_method){
-			app_data.update(binding);
+		if($element !== binding.element && $element[0] !== binding.element[0]){
+			$element.replaceWith(binding.element);
 		}
 		
-		return rt;
+		return binding.element;
 		
 	};
 	// abstract method
@@ -1019,6 +1023,23 @@ $.extend(Tag, {
 			}
 		}
 	},
+	
+	getTagName : function($ele){
+		var	tag_name = $ele.prop("tagName");	
+		if(tag_name){
+			tag_name = tag_name.toLowerCase();
+		}	
+					
+		//Add scopeName propertity for IE	
+		if($ele.prop("scopeName")){
+			var	scope_name = $ele.prop("scopeName") === "HTML" ? "" : $ele.prop("scopeName") + ":";
+			if(tag_name && tag_name.search(scope_name) == -1){
+				tag_name = scope_name + tag_name;
+			}
+		}
+		return tag_name;
+	},
+	
 	parse : function($element, app, app_data, local_data) {
 		
 
@@ -1033,27 +1054,15 @@ $.extend(Tag, {
 
 		var parse = function ($ele, app_data) {
 			
-			var	tag_name = $ele.prop("tagName");	
-			if(tag_name){
-				tag_name = tag_name.toLowerCase();
-			}	
-						
-			//Add scopeName propertity for IE	
-			if($ele.prop("scopeName")){
-				var	scope_name = $ele.prop("scopeName") === "HTML" ? "" : $ele.prop("scopeName") + ":";
-				if(tag_name && tag_name.search(scope_name) == -1){
-					tag_name = scope_name + tag_name;
-				}
-			}		
-
-			var j, tag = Tag.get(tag_name);
+			var	tag_name = Tag.getTagName($ele),
+			tag = Tag.get(tag_name);
 
 			if (tag) {
 				var replaced = tag.parse($ele, app, app_data, local_data);				
 				
 				if (tag.parseChild) {
 					var subs = replaced.size() > 1 ? replaced : replaced.children();
-					for ( j = 0; j < subs.size(); j++) {
+					for (var j = 0; j < subs.size(); j++) {
 						parse(subs.eq(j), app_data);
 					}
 				}
@@ -1064,7 +1073,7 @@ $.extend(Tag, {
 					return;
 				}
 
-				for ( j = 0; j < subs.size(); j++) {
+				for (var j = 0; j < subs.size(); j++) {
 					parse(subs.eq(j), app_data);
 				}
 			}
@@ -1177,21 +1186,101 @@ jCtrl.extend("Adapter", function() {
 
 // Text Tag
 .extend("Tag", function(){
+	
+	var self = this;
 	this.ns = "";
 	this.matchTag = function(name){
 		return /^span|h[1-6]$/.test(name);
 	};
 	this.handle = function(){
-		LogFactory.getLog("TextTag").begin("bind");
 		var binding = this;
 		binding.element.text(binding.app_data.el(binding.bind_exp, binding.local_data));
-		LogFactory.getLog("TextTag").end("bind");
 	};
 	this.update = function() {
-		LogFactory.getLog("TextTag").begin("update");
+		self.handle.call(this);
+	};
+})
+
+.extend("Tag", function() {
+	
+	this.name = "foreach";
+	
+	//Self handle contents
+	this.parseChild = false;
+	
+	this.handle = function() {
 		var binding = this;
-		binding.element.text(binding.app_data.el(binding.bind_exp, binding.local_data));
-		LogFactory.getLog("TextTag").end("update");
+		var	element = binding.element,
+		attr_var = element.attr("var"),
+		begin = Number(binding.app_data.el(element.attr("begin"))), 
+		end = Number(binding.app_data.el(element.attr("end"))), 
+		new_element = $("<div></div>");
+
+		for (var i = begin; i <= end; i++) {
+			var child_data = new Data(binding.app_data);
+			child_data.define(attr_var);
+			child_data.set(attr_var, i);
+			
+			var temp_child_element = element.contents().clone();
+			new_element.append(temp_child_element);
+			Tag.parse(temp_child_element, binding.app, child_data, binding.local_data);
+		}
+		binding.element = new_element.contents();
+
+	};
+})
+
+.extend("Tag", function(){
+	
+	this.name = "out";
+	
+	this.handle = function(){
+		this.element = $("<span></span>").text(this.app_data.el(this.element.attr("value")));
+	};
+})
+
+.extend("Tag", function(){
+	
+	var self = this;
+	
+	this.name = "choose";
+	
+	this.handle = function(){
+		var binding = this,
+		choose = binding.element.children();
+		binding.choose = choose.clone();
+		
+		for(var i = 0; i<choose.size();i++){
+			var sub = choose.eq(i),
+			tag_name = self.matchNS(Tag.getTagName(sub)),
+			test= sub.attr("test");
+			
+			binding.bind_exp = test;
+			
+			if(tag_name == "otherwise"){
+				return sub.contents();
+			}else if(tag_name= "when"){
+				if(binding.app_data.el(test, binding.local_data) == true){
+					return sub.contents();
+				}		
+			}			
+		}	
+	};
+})
+
+.extend("Tag", function(){
+	
+	this.name="if";
+	
+	this.handle = function(){
+		var binding = this,
+		test = this.element.attr("test");
+		
+		if(binding.app_data.el(test, binding.local_data) == true){
+			binding.element =  binding.element.contents();
+		}else{
+			this.element.remove();
+		}		
 	};
 })
 
@@ -1208,73 +1297,8 @@ jCtrl.extend("Adapter", function() {
 				binding.app.loadView($("#container"), href);
 			}
 		}).html(binding.element.html());
-		return new_element;
-	};
-})
-
-.extend("Tag", function() {
-	
-	this.name = "foreach";
-	//Self handle contents
-	this.parseChild = false;
-	this.handle = function() {
-		var binding = this;
-		var	element = binding.element,
-		attr_var = element.attr("var"),
-		begin = Number(binding.app_data.el(element.attr("begin"))), 
-		end = Number(binding.app_data.el(element.attr("end"))), 
-		new_element = $("<div></div>");
-
-		LogFactory.getLog("TagEach").begin("handle");
-		for (var i = begin; i <= end; i++) {
-			LogFactory.getLog("TagEach").begin("createEach");
-			var child_data = new Data(binding.app_data);
-			child_data.define(attr_var);
-			child_data.set(attr_var, i);
-			
-			var temp_child_element = element.contents().clone();
-			new_element.append(temp_child_element);
-			Tag.parse(temp_child_element, binding.app, child_data, binding.local_data);
-			LogFactory.getLog("TagEach").end("createEach");
-		}
-		LogFactory.getLog("TagEach").end("handle");
-		return new_element.contents();
-
-	};
-})
-
-.extend("Tag", function(){
-	
-	this.name = "out";
-	
-	this.handle = function(){
-		var binding = this;
-		return $("<span></span>").text(binding.app_data.el(binding.element.attr("value")));		
-	};
-})
-
-.extend("Tag", function(){
-	
-	this.name = "choose";
-	
-	this.handle = function(){
-		return $("<span></span>");		
-	};
-})
-
-.extend("Tag", function(){
-	
-	this.name="if";
-	
-	this.handle = function(){
-		var binding = this,
-		test = this.element.attr("test");
 		
-		if(binding.app_data.el(test, binding.local_data) == true){
-			return this.element.contents();
-		}else{
-			this.element.remove();
-		}		
+		binding.element = new_element;
 	};
 })
 

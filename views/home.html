@@ -10,7 +10,7 @@
 
 	<j:xa href="index">
 		goto
-		<span data-bind="{local.x}"></span>
+		<span data-bind="{title}"></span>
 	</j:xa>
 
 	<j:if test="{true}">
@@ -20,14 +20,14 @@
 	<j:xinput data-bind="{local.x}"></j:xinput>
 	
 	<j:choose>
-		<j:when test="${user.generous}">
-			user.generous　is true.
+		<j:when test="{title == 'en'}">
+			choose-en
 		</j:when>
-		<j:when test="${user.stingy}">
-			user.stingy is true.
+		<j:when test="{title == 'cn'}">
+			choose-cn
 		</j:when>
 		<j:otherwise>
-			user.generous and user.stingy are false.
+			choose-other
 		</j:otherwise>
 	</j:choose>
 
