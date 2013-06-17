@@ -83,8 +83,9 @@ var Data = function(data) {
 					if (/\($/.test(full)) {
 						return "(";
 					}
-					if(key_values[full] === undefined){
-						
+					if(!key_values.hasOwnProperty(full)){
+
+						self.keys.push(full);
 						var fk_exp_rs = /^local\.([^.]*)(?:\.(.*))?$/.exec(full);
 						if (fk_exp_rs && fk_list && fk_list[fk_exp_rs[1]]) {
 							key_values[full] = fk_list[fk_exp_rs[1]].get(fk_exp_rs[2] || "");
@@ -93,7 +94,6 @@ var Data = function(data) {
 						}
 					}
 					values.push(key_values[full] === undefined ? "" : key_values[full]);
-					self.keys.push(full);
 					return "arguments[" + (i++) + "]";
 				}
 				return alias;
@@ -1201,6 +1201,29 @@ jCtrl.extend("Adapter", function() {
 	};
 })
 
+.extend("Tag", function(){
+	
+	this.name = "set";
+		
+	this.handle = function(){
+		var binding = this,
+		var_name = binding.element.attr("val"),
+		var_value = binding.app_data.el(binding.element.attr("value"), binding.local_data);
+		
+		if(var_name){
+			if(var_name.indexOf("local.") == 0){
+				var_name = var_name.substr(6);
+				if(!binding.local_data[var_name]){
+					binding.local_data[var_name] = new Data();
+				}
+				binding.local_data[var_name].set(var_value);
+			}else{
+				binding.app_data[var_name].set(var_value);
+			}
+		}
+	};
+})
+
 .extend("Tag", function() {
 	
 	this.name = "foreach";
@@ -1235,7 +1258,7 @@ jCtrl.extend("Adapter", function() {
 	this.name = "out";
 	
 	this.handle = function(){
-		this.element = $("<span></span>").text(this.app_data.el(this.element.attr("value")));
+		this.element = $("<span></span>").text(this.app_data.el(this.element.attr("value"),this.local_data));
 	};
 })
 
@@ -1247,25 +1270,64 @@ jCtrl.extend("Adapter", function() {
 	
 	this.handle = function(){
 		var binding = this,
-		choose = binding.element.children();
-		binding.choose = choose.clone();
+		placeholder = $("<span class='placeholder'></span>"),
+		contents = binding.element.children();
 		
-		for(var i = 0; i<choose.size();i++){
-			var sub = choose.eq(i),
+		binding.bind_exp = "";
+		binding.placeholder = placeholder;
+		binding.contents = [];
+		
+		for(var i = 0; i< contents.size();i++){
+			var sub = contents.eq(i),
 			tag_name = self.matchNS(Tag.getTagName(sub)),
-			test= sub.attr("test");
+			test = sub.attr("test") || "",
+			element = sub.contents();
 			
-			binding.bind_exp = test;
+			binding.bind_exp += test;
+			
+			binding.contents.push({
+				name : tag_name,
+				test : test,
+				element : element
+			});
 			
 			if(tag_name == "otherwise"){
-				return sub.contents();
-			}else if(tag_name= "when"){
-				if(binding.app_data.el(test, binding.local_data) == true){
-					return sub.contents();
+				binding.element = element;
+				return;
+			}else if(tag_name == "when"){
+				if(binding.app_data.el(test, binding.local_data) == true ){
+					binding.element =  element;
+					return;
 				}		
-			}			
+			}
 		}	
 	};
+	
+	this.update = function(){
+		var binding = this;
+		
+		for(var i = 0; i<binding.contents.length;i++){
+			
+			var element = binding.contents[i].element,
+			tag_name = binding.contents[i].name,
+			test = binding.contents[i].test;
+			
+			if(tag_name == "otherwise" && element != binding.element){
+				binding.element.replaceWith(element);
+				binding.element = element;
+				return;
+			}else if(tag_name == "when"){
+				if(binding.app_data.el(test, binding.local_data) == true){
+					if(element != binding.element){
+						binding.element.replaceWith(element);
+						binding.element = element;
+					}
+					return;	
+				}	
+			}
+		}		
+	};
+	
 })
 
 .extend("Tag", function(){
@@ -1273,14 +1335,36 @@ jCtrl.extend("Adapter", function() {
 	this.name="if";
 	
 	this.handle = function(){
-		var binding = this,
-		test = this.element.attr("test");
+		var binding = this,	
+		placeholder = $("<span class='placeholder'></span>");
+
+		binding.bind_exp = binding.element.attr("test");
+		binding.placeholder = placeholder;
+		binding.contents = binding.element.contents();
 		
-		if(binding.app_data.el(test, binding.local_data) == true){
-			binding.element =  binding.element.contents();
+		if(binding.app_data.el(binding.bind_exp, binding.local_data) == true){
+			binding.element =  binding.contents;
 		}else{
-			this.element.remove();
+			binding.element = placeholder;
 		}		
+		
+	};
+	
+	this.update = function(){
+		var binding = this;
+		if( binding.element == binding.placeholder  				
+			&& binding.app_data.el(binding.bind_exp, binding.local_data) == true){
+			
+			binding.placeholder.replaceWith(binding.contents);
+			binding.element = binding.contents;
+			
+		}else if (binding.element == binding.contents  
+			&& binding.app_data.el(binding.bind_exp, binding.local_data) == false){
+			
+			binding.contents.replaceWith(binding.placeholder);
+			binding.element = binding.placeholder;
+			
+		}
 	};
 })
 
