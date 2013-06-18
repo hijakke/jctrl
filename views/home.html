@@ -4,6 +4,11 @@
 
 	local.x = 	<j:out value="{local.x}" />
 	
+
+	<j:if test="{local.x % 2 == 0}"> 
+		if
+	</j:if>
+	
 	<j:foreach var="i" begin="1" end="2">
 		<div style="white-space: nowrap;">
 			<j:foreach var="j" begin="1" end="{i}">
@@ -11,10 +16,6 @@
 			</j:foreach>
 		</div>
 	</j:foreach>
-
-	<j:if test="{local.x % 2 == 0}"> 
-		if
-	</j:if>
 
 	<j:choose>
 		<j:when test="{local.x % 4 == 0}">

@@ -1273,6 +1273,7 @@ jCtrl.extend("Adapter", function() {
 		placeholder = $("<span class='placeholder'></span>"),
 		contents = binding.element.children();
 		
+		binding.element = null;
 		binding.bind_exp = "";
 		binding.placeholder = placeholder;
 		binding.contents = [];
@@ -1291,13 +1292,16 @@ jCtrl.extend("Adapter", function() {
 				element : element
 			});
 			
+			if(binding.element){
+				continue;
+			}
+			
 			if(tag_name == "otherwise"){
 				binding.element = element;
 				return;
 			}else if(tag_name == "when"){
 				if(binding.app_data.el(test, binding.local_data) == true ){
 					binding.element =  element;
-					return;
 				}		
 			}
 		}	
