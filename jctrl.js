@@ -1289,7 +1289,8 @@ jCtrl.extend("Adapter", function() {
 			binding.contents.push({
 				name : tag_name,
 				test : test,
-				element : element
+				element : element,
+				parsed : false
 			});
 			
 			if(binding.element){
@@ -1348,8 +1349,10 @@ jCtrl.extend("Adapter", function() {
 		
 		if(binding.app_data.el(binding.bind_exp, binding.local_data) == true){
 			binding.element =  binding.contents;
+			binding.parsed = true; 
 		}else{
 			binding.element = placeholder;
+			binding.parsed = false; 
 		}		
 		
 	};
@@ -1361,6 +1364,11 @@ jCtrl.extend("Adapter", function() {
 			
 			binding.placeholder.replaceWith(binding.contents);
 			binding.element = binding.contents;
+			
+			if(!binding.parsed){
+				binding.parsed = true;
+				Tag.parse(binding.element, binding.app, binding.app_data, binding.local_data);
+			}
 			
 		}else if (binding.element == binding.contents  
 			&& binding.app_data.el(binding.bind_exp, binding.local_data) == false){
@@ -1420,5 +1428,4 @@ jCtrl.extend("Adapter", function() {
 });
 
 //window.jCtrl = jCtrl;
-//window.LogFactory = LogFactory;
 //})(window, jQuery);

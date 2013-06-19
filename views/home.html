@@ -1,33 +1,35 @@
 <div xmlns:j="http://jctrl.org/tags">
 	
 	<j:set val="local.x" value="{1}" />
-
-	local.x = 	<j:out value="{local.x}" />
+	
 	
 
 	<j:if test="{local.x % 2 == 0}"> 
-		if
+		<j:set val="local.y" value="{1}" />
 	</j:if>
 	
-	<j:foreach var="i" begin="1" end="2">
-		<div style="white-space: nowrap;">
-			<j:foreach var="j" begin="1" end="{i}">
-				<span data-bind="{j * local.x }"></span>
-			</j:foreach>
-		</div>
-	</j:foreach>
+	x:<span data-bind="{local.x}"></span>
+	y:<span data-bind="{local.y}"></span>
+	
+<!-- 	<j:foreach var="i" begin="1" end="2"> -->
+<!-- 		<div style="white-space: nowrap;"> -->
+<!-- 			<j:foreach var="j" begin="1" end="{i}"> -->
+<!-- 				<span data-bind="{j * local.x }"></span> -->
+<!-- 			</j:foreach> -->
+<!-- 		</div> -->
+<!-- 	</j:foreach> -->
 
-	<j:choose>
-		<j:when test="{local.x % 4 == 0}">
-			choose-0
-		</j:when>
-		<j:when test="{local.x % 4 == 1}">
-			choose-1
-		</j:when>
-		<j:otherwise>
-			choose-2,3
-		</j:otherwise>
-	</j:choose>
+<!-- 	<j:choose> -->
+<!-- 		<j:when test="{local.x % 4 == 0}"> -->
+<!-- 			choose-0 -->
+<!-- 		</j:when> -->
+<!-- 		<j:when test="{local.x % 4 == 1}"> -->
+<!-- 			choose-1 -->
+<!-- 		</j:when> -->
+<!-- 		<j:otherwise> -->
+<!-- 			choose-2,3 -->
+<!-- 		</j:otherwise> -->
+<!-- 	</j:choose> -->
 	
 	<input type="button" value="BIND" />
 
