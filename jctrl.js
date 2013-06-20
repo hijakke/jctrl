@@ -1,14 +1,46 @@
 //(function(window, $, undefined) {
 
+
+/*
+ *  
+ */
 var Data = function(data) {
 	
 	var self = this, 
 	updater = [], 
 	pool, 
-	chain,
+	chain,	
+	
+	alias_map = {
+		lt : "<",
+		gt : ">",
+		le : "<=",
+		ge : ">=",
+		eq : "==",
+		ne : "!=",
+		div : "/",
+		mod : "%",
+		and : "&&",
+		or : "||",
+		"true" : "true",
+		"false" : "false",
+		"null" : "null",
+		"undefined" : "undefined"
+	},
+	
+	
+	// 将el表达式转换成js表达式 
+	// (?:\\'|[^'])*' 过渡单引号字符串 
+	// (?:\\"|[^"])*" 过滤双引号字符串
+	// \b[_$a-zA-Z](?:[_$.\w]*|\[(?:\\\]|[^\]])*\])* 获取变量名，计算变量值加入参数列表
+	// (?:\s*\()? 过滤函数	
+	rkey_replace = /'(?:\\'|[^'])*'|"(?:\\"|[^"])*"|\b[_$a-zA-Z](?:[_$.\w]*|\[(?:\\\]|[^\]])*\])*(?:\s*\()?/g,
+	
+	//允许通过中括号取属性值时不使用引号，在计算时加上引号
+	rkey_add_quotes = /\[(?!['"])((?:\\\]|[^\]])*)\]/g,
 	
 	format = function(arg) {
-		arg = arg.replace(/\[(\w+)\]/g, "['$1']");
+		arg = arg.replace(rkey_add_quotes, "['$1']");
 		return arg && /^[^.]/.test(arg) ? "." + arg : arg;
 	}, 	
 	
@@ -59,26 +91,13 @@ var Data = function(data) {
 
 		var i = 0, values = [], key_values = {};
 
-		el = el.replace(/'(\\'|[^'])*'|"(\\"|[^"])*"|\b[_$a-zA-Z][_$.\w\[\]'"]*(\s*\()?/g, function(full) {
+		rkey_replace.lastIndex = 0;
+		
+		el = el.replace(rkey_replace, function(full) {
 			if (/^['"]/.test(full)) {
 				return full;
 			} else {
-				var alias = {
-				lt : "<",
-				gt : ">",
-				le : "<=",
-				ge : ">=",
-				eq : "==",
-				ne : "!=",
-				div : "/",
-				mod : "%",
-				and : "&&",
-				or : "||",
-				"true" : "true",
-				"false" : "false",
-				"null" : "null",
-				"undefined" : "undefined"
-				}[full];
+				var alias = alias_map[full];
 				if (!alias) {
 					if (/\($/.test(full)) {
 						return "(";
@@ -428,6 +447,8 @@ View = function($view, $app, app) {
  	scripts = [], 
  	styles = [], 	
  	local_data = [],
+ 	data_url = $view.attr("data"),
+ 	app_data = new Data(app.data()),
  	
 	requires = $view.attr("require")? $view.attr("require").split(",") : [],
 	
@@ -493,6 +514,12 @@ View = function($view, $app, app) {
 	});
 	
 	this.load = function(callback){
+		
+		if(data_url){
+			connector.load(data_url, Adapter.get(dataType)).ready(function(gots){
+				app_data.set(gots[0] || {});
+			});
+		}
 		
 		connector.load(attributes.url, Adapter.get(viewType)).ready(function(html){
 			attributes.html = "<div>" + html[0] +"</div>"; 
@@ -573,7 +600,7 @@ View = function($view, $app, app) {
 	this.generate = function(){
 		var new_dom = attributes.dom.clone();
 		dom_instances.push(new_dom);
-		Tag.parse(new_dom, app, app.data(), local_data);
+		Tag.parse(new_dom, app, app_data, local_data);
 		return new_dom.contents();
 	};
 	
@@ -787,16 +814,6 @@ App = function($app){
 	sys_data = new Data(),
 	app_data = new Data(sys_data),
 	langs = {};
-		
-	app_data.set({session:{}, model:{}});
-	
-	$app.find("bean.view").each(function(){
-		views.push(new View($(this), $app, self));
-	});
-	
-	$app.find("map entry").each(function() {
-		maps.push(new Map($(this), self));
-	});
 	
 	this.ctr = new Controller(this);
 	
@@ -841,6 +858,16 @@ App = function($app){
 			}
 		}
 	};
+	
+	app_data.set({session:{}, model:{}});
+	
+	$app.find("bean.view").each(function(){
+		views.push(new View($(this), $app, self));
+	});
+	
+	$app.find("map entry").each(function() {
+		maps.push(new Map($(this), self));
+	});
 },
 
 LogFactory = (function(){
@@ -1118,7 +1145,7 @@ jCtrl.extend("Adapter", function() {
 			obj["@attributes"] = {};
 				for (var j = 0; j < xml.attributes.length; j++) {
 					var attribute = xml.attributes.item(j);
-					obj["@attributes"][attribute.nodeName] = attribute.nodeValue;
+					obj["@" + attribute.nodeName] = attribute.nodeValue;
 				}
 			}
 		} else if (xml.nodeType == 3) { // text
@@ -1235,18 +1262,32 @@ jCtrl.extend("Adapter", function() {
 		var binding = this;
 		var	element = binding.element,
 		attr_var = element.attr("var"),
-		begin = Number(binding.app_data.el(element.attr("begin"))), 
+		begin = Number(binding.app_data.el(element.attr("begin"))) || 0, 
 		end = Number(binding.app_data.el(element.attr("end"))), 
+		items = $.trim(element.attr("items")),
 		new_element = $("<div></div>");
 
-		for (var i = begin; i <= end; i++) {
-			var child_data = new Data(binding.app_data);
-			child_data.define(attr_var);
-			child_data.set(attr_var, i);
-			
-			var temp_child_element = element.contents().clone();
-			new_element.append(temp_child_element);
-			Tag.parse(temp_child_element, binding.app, child_data, binding.local_data);
+		if(items){
+			items = binding.app_data.el(items);
+			for(var i in items){
+				var child_data = new Data();
+
+				child_data.define(attr_var, items[i]);
+
+				var temp_child_element = element.contents().clone();
+				new_element.append(temp_child_element);
+				Tag.parse(temp_child_element, binding.app, child_data, binding.local_data);
+			}
+		} else if(end) {
+			for ( var i = begin; i <= end; i++) {
+				var child_data = new Data(binding.app_data);
+				child_data.define(attr_var);
+				child_data.set(attr_var, i);
+
+				var temp_child_element = element.contents().clone();
+				new_element.append(temp_child_element);
+				Tag.parse(temp_child_element, binding.app, child_data, binding.local_data);
+			}
 		}
 		binding.element = new_element.contents();
 
