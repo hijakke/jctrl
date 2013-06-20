@@ -36,32 +36,30 @@ var Data = function(data) {
 	// (?:\s*\()? 过滤函数	
 	rkey_replace = /'(?:\\'|[^'])*'|"(?:\\"|[^"])*"|\b[_$a-zA-Z](?:[_$.\w]*|\[(?:\\\]|[^\]])*\])*(?:\s*\()?/g,
 	
-	//允许通过中括号取属性值时不使用引号，在计算时加上引号
+	//允许通过中括号取属性值时不使用引号，计算前加上引号
 	rkey_add_quotes = /\[(?!['"])((?:\\\]|[^\]])*)\]/g,
 	
 	format = function(arg) {
 		arg = arg.replace(rkey_add_quotes, "['$1']");
 		return arg && /^[^.]/.test(arg) ? "." + arg : arg;
 	}, 	
-	
-	// data access 
+	 
 	val = function() {
 		try {
 			var variable_name = /\w+/.exec(arguments[0])[0], 
 			key = "data.json" + format(arguments[0]);
 			
+			//当当前和上级作用域中都不存在该属性时
+			//进行写操作时对未定义的属性先进行定义,进行读操作时返回未定义
 			if(!self.has(variable_name)){
-				//define variable if variable not defined
 				if(arguments.length == 2){
 					self.define(variable_name);
 				}else{
-				// return undefined when variable not defined
 					return undefined;
 				}
 			}
 
-			//if variable not defined in itself
-			//then access the variable from upper scope
+			//属性定义在上级作用域中
 			if (pool.json && !pool.json.hasOwnProperty(variable_name)) {
 				if(arguments.length == 2){
 					chain.set(arguments[0], arguments[1]);
@@ -71,7 +69,6 @@ var Data = function(data) {
 				return;
 			}
 
-			//if variable defined in itself
 			if (arguments.length == 2) {
 				(new Function("data", "value", key + "=value;"))(pool, arguments[1]);
 				self.update();
@@ -102,8 +99,9 @@ var Data = function(data) {
 					if (/\($/.test(full)) {
 						return "(";
 					}
+					
+					//未计算过变量的值
 					if(!key_values.hasOwnProperty(full)){
-
 						self.keys.push(full);
 						var fk_exp_rs = /^local\.([^.]*)(?:\.(.*))?$/.exec(full);
 						if (fk_exp_rs && fk_list && fk_list[fk_exp_rs[1]]) {
@@ -121,6 +119,7 @@ var Data = function(data) {
 		return (new Function("return " + el)).apply(window, values);
 	};
 	
+	//将构造参数中的Data对象作为上级作用域对象
 	if(data instanceof Data){
 		chain = data;
 		pool = {json : {}};
@@ -129,6 +128,7 @@ var Data = function(data) {
 		pool = {json : data || {}};
 	}
 	
+	//计算一次el表达式的值后，将表达式中的变量名保存在keys数组中
 	this.keys = [];
 	
 	this.get = function(){
@@ -160,7 +160,7 @@ var Data = function(data) {
 			: chain ? chain.has(key) : false;
 	};
 
-	//parse el expression in string
+	//计算字符串中el表达式的值
 	this.el = function(str, fk_list) {
 		try {
 			self.keys = [];
@@ -171,7 +171,8 @@ var Data = function(data) {
 			var proto_result, cur_exp;		
 			str = str.replace(/[$#]?{('[^']*'|"[^']*"|[^{}]+)?}/g, function(full, exp_str) {				
 				cur_exp = exp_str;				
-				//express only
+				
+				//如果字符串只包含el表达式，返回原型对象
 				if (str.length == full.length){
 					proto_result = elval(exp_str, fk_list);
 					return ;
@@ -204,13 +205,13 @@ Adapter = function() {
 		return this.type === type;
 	};
 	
-	// abstract method
+	// 抽象方法
 	this.handle = function(){
 		throw new Error("Unimplemented method");
 	};
 },
 
-//download and cache files
+
 Connector = function() {
 
 	var cached = {},
@@ -452,7 +453,7 @@ View = function($view, $app, app) {
  	
 	requires = $view.attr("require")? $view.attr("require").split(",") : [],
 	
-	//public properties
+	//公共属性
 	attributes = {
 		id : id,
 		url : path + ($view.attr("url") || id + "." + viewType) ,
@@ -492,7 +493,7 @@ View = function($view, $app, app) {
 			});
 		}
 	};
-	// load required resources in require attribute
+	// 加载require属性中定义的对象
 	for(var i=0;i<requires.length;i++){
 		switch(requires[i]){
 			case ".js":
@@ -508,7 +509,7 @@ View = function($view, $app, app) {
 				
 		}
 	}
-	// load required resources in require children
+	
 	$view.find("require>").each(function(){
 		load_require($(this));
 	});
@@ -614,7 +615,7 @@ Tag = function() {
 		throw new Error("Unimplemented method");
 	};
 	
-	//get tag name defined in namespace
+	//匹配标签命名空间并截取标签名
 	this.matchNS = function(name){
 		var prefix = /(?:([^:]*):)?(.*)/.exec(name);
 		if(!this.ns && !prefix[1]){
@@ -694,7 +695,7 @@ Tag = function() {
 		return binding.element;
 		
 	};
-	// abstract method
+	
 	this.update = abstract_method;
 },
 
@@ -784,17 +785,20 @@ Controller = function(app) {
 			required_views[entry_view_id] = entry_view;
 			entry_view.load(view_load_ready);
 			
-			//required views and self
+			//当前请求依赖的视图数量
+			//包括请求的视图和该视图依赖的视图
 			view_required_count = required_id_list.length + 1;
 			
 			for ( var i = 0; i < required_id_list.length; i++) {				
-				//load a required view
+				
 				required_views[required_id_list[i]] = app.view(required_id_list[i]).load(view_load_ready);
-				//load required views by required view loaded
+				
+				//加载依赖视图后继续加载该视图的依赖视图
+				//依赖视图会被包含多次
 				var current_required_id_list = required_views[required_id_list[i]].attr("requires");
 				
 				for(var j =0; j < current_required_id_list.length; j++){
-					//not loaded
+					
 					if(!required_views[current_required_id_list[j]]){
 						view_required_count++;
 						required_views[current_required_id_list[j]] = app.view(current_required_id_list[j]).load(view_load_ready);
@@ -1021,7 +1025,7 @@ jCtrl = new function jCtrl(){
 };
 
 
-//TODO: Extend Tag
+//TODO: 扩展Tag对象
 
 $.extend(Tag, {
 	tns : [],
@@ -1057,7 +1061,7 @@ $.extend(Tag, {
 			tag_name = tag_name.toLowerCase();
 		}	
 					
-		//Add scopeName propertity for IE	
+		//部分浏览器（ie）tagName不包含命名空间前缀
 		if($ele.prop("scopeName")){
 			var	scope_name = $ele.prop("scopeName") === "HTML" ? "" : $ele.prop("scopeName") + ":";
 			if(tag_name && tag_name.search(scope_name) == -1){
@@ -1118,7 +1122,7 @@ $.extend(Tag, {
 });
 
 
-//TODO: Extend Adapter 
+//TODO: 扩展Adapter对象 
 $.extend(Adapter,{
 	instances : [],
 	get : function(type){
@@ -1131,7 +1135,8 @@ $.extend(Adapter,{
 	}
 });
 
-//xml data adapter
+//xml类型适配器，将xml数据对象转换成JSON对象
+
 jCtrl.extend("Adapter", function() {
 	
 	this.type = "xml";
@@ -1140,7 +1145,7 @@ jCtrl.extend("Adapter", function() {
 		
 		var obj= {}, tmp , sub_count = 0;
 		
-		if (xml.nodeType == 1) { // element
+		if (xml.nodeType == 1) { 
 			if (xml.attributes.length > 0) {
 			obj["@attributes"] = {};
 				for (var j = 0; j < xml.attributes.length; j++) {
@@ -1148,8 +1153,8 @@ jCtrl.extend("Adapter", function() {
 					obj["@" + attribute.nodeName] = attribute.nodeValue;
 				}
 			}
-		} else if (xml.nodeType == 3) { // text
-			obj = $.trim(xml.nodeValue); // add trim here
+		} else if (xml.nodeType == 3) {
+			obj = $.trim(xml.nodeValue); 
 		}
 		
 		if (xml.hasChildNodes()) {
@@ -1187,7 +1192,7 @@ jCtrl.extend("Adapter", function() {
 	};
 })
 
-//json data adatper
+//JSON类型适配器
 .extend("Adapter", function() {
 	
 	this.type = "json";
