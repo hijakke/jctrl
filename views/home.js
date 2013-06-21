@@ -1,6 +1,5 @@
 
-var a = 1;
-
 $("input").click(function(){
-	x.set(++a);
+	console.log(appData.get("bean"));
+	appData.set("bean", []);
 });

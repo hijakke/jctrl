@@ -1,10 +1,12 @@
 <div xmlns:j="http://jctrl.org/tags">
 
 	<j:set val="local.x" value="{1}" />
-
+	
+	<span data-bind="length: {bean.length}" ></span>
+	
 	<j:foreach var="i" items="{bean}" >
 		<div style="white-space: nowrap;">
-			<span data-bind="{i[@class]}"></span>
+			<span data-bind="id: {i.@id}"></span>
 		</div>
 	</j:foreach>
 

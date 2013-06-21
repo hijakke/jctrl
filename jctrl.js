@@ -30,14 +30,15 @@ var Data = function(data) {
 	
 	
 	// 将el表达式转换成js表达式 
-	// (?:\\'|[^'])*' 过渡单引号字符串 
-	// (?:\\"|[^"])*" 过滤双引号字符串
-	// \b[_$a-zA-Z](?:[_$.\w]*|\[(?:\\\]|[^\]])*\])* 获取变量名，计算变量值加入参数列表
+	// '(?:\\'|[^'])*' 过渡单引号字符串 
+	// "(?:\\"|[^"])*" 过滤双引号字符串
+	// \b[_$a-zA-Z](?:[_$\w]*|(?:\[|\.)[^\[\].]*\]?)* 获取变量名，计算变量值加入参数列表
 	// (?:\s*\()? 过滤函数	
-	rkey_replace = /'(?:\\'|[^'])*'|"(?:\\"|[^"])*"|\b[_$a-zA-Z](?:[_$.\w]*|\[(?:\\\]|[^\]])*\])*(?:\s*\()?/g,
+	rkey_replace = /'(?:\\'|[^'])*'|"(?:\\"|[^"])*"|\b[_$a-zA-Z](?:[_$\w]*|(?:\[|\.)[^\[\].]*\]?)*(?:\s*\()?/g,
 	
 	//允许通过中括号取属性值时不使用引号，计算前加上引号
-	rkey_add_quotes = /\[(?!['"])((?:\\\]|[^\]])*)\]/g,
+	//并将取属性方式统一为中括号
+	rkey_add_quotes = /(?:\[|\.)(?!['"])([^\[\].]*)\]?/g,
 	
 	format = function(arg) {
 		arg = arg.replace(rkey_add_quotes, "['$1']");
@@ -128,7 +129,7 @@ var Data = function(data) {
 		pool = {json : data || {}};
 	}
 	
-	//计算一次el表达式的值后，将表达式中的变量名保存在keys数组中
+	//计算el表达式的值后，表达式中的变量名会保存在keys数组中
 	this.keys = [];
 	
 	this.get = function(){
@@ -205,7 +206,7 @@ Adapter = function() {
 		return this.type === type;
 	};
 	
-	// 抽象方法
+	// 抽象方法，由扩展Adapter类实现
 	this.handle = function(){
 		throw new Error("Unimplemented method");
 	};
@@ -217,8 +218,9 @@ Connector = function() {
 	var cached = {},
 	task_list = [],
 	clear_fns = [],
+	error_fns = [],
 	progress_fns = [],
-	last,	
+	last,
 	
 	update = function(current) {
 		var progress = 0;
@@ -254,6 +256,7 @@ Connector = function() {
 				}
 				finally{
 					clear_fns=[];
+					error_fns=[];
 					progress_fns = [];
 				}
 			}
@@ -293,6 +296,11 @@ Connector = function() {
 					update(current);
 				},
 				error : function() {
+					
+					for(var i =0;i<error_fns.length;i++){
+						error_fns[i](this.orgin_url);
+					}
+					
 					current.errors.push(this);
 					update(current);
 				}
@@ -336,7 +344,11 @@ Connector = function() {
 		}else{
 			clear_fns.push(fn);
 		}
-	},
+	};
+	
+	this.error = function(fn){
+		error_fns.push(fn);
+	};
 	
 	this.ready = function(fn){
 		if(last.ready){
@@ -514,6 +526,10 @@ View = function($view, $app, app) {
 		load_require($(this));
 	});
 	
+	connector.error(function(url){
+		throw new Error("Load view file: " + url +" failed.");
+	});
+	
 	this.load = function(callback){
 		
 		if(data_url){
@@ -552,7 +568,7 @@ View = function($view, $app, app) {
 				}
 				style_doms.push(style);				
 			}
-		});
+		});		
 		
 		connector.clear(function(){
 			callback(id);
@@ -570,9 +586,10 @@ View = function($view, $app, app) {
 			script_head += "var " + j + " = arguments[0]['" + j + "'];\n";
 		}
 		script_head += "var session = arguments[1];\n";
+		script_head += "var appData = arguments[2];\n";
 		
 		for(var i = 0; i<script_texts.length;i++){
-			(new Function(script_head + script_texts[i])).call(window, local_data, app.session);
+			(new Function(script_head + script_texts[i])).call(window, local_data, app.session, app_data);
 		}
 		
 		for (var i = 0; i < style_doms.length; i++) {
@@ -613,6 +630,12 @@ Tag = function() {
 
 	var abstract_method = function(){
 		throw new Error("Unimplemented method");
+	},
+	get_bind_value = function(el){
+		if(el && el.indexOf("@") == 0){
+			el = this.element.attr(el.substr(1));
+		}
+		return this.appData.el(el || this.bindExp, this.localData);
 	};
 	
 	//匹配标签命名空间并截取标签名
@@ -642,18 +665,18 @@ Tag = function() {
 		
 		has_app_data_flag = false;
 		
-		binding.app_data.el(binding.bind_exp);
+		binding.appData.el(binding.bindExp);
 		
-		for ( var i = 0; i < binding.app_data.keys.length; i++) {
-			fk_exp_rs = fk_exp.exec(binding.app_data.keys[i]);
+		for ( var i = 0; i < binding.appData.keys.length; i++) {
+			fk_exp_rs = fk_exp.exec(binding.appData.keys[i]);
 			if(fk_exp_rs){
 				//generate a new Data object if first appeared
-				if(!binding.local_data[fk_exp_rs[1]]){
-					binding.local_data[fk_exp_rs[1]] = new Data("");
+				if(!binding.localData[fk_exp_rs[1]]){
+					binding.localData[fk_exp_rs[1]] = new Data("");
 				}
 				
 				if(binding.update != abstract_method){				
-					binding.local_data[fk_exp_rs[1]].update(binding);
+					binding.localData[fk_exp_rs[1]].update(binding);
 				}
 			}
 			else{
@@ -662,7 +685,7 @@ Tag = function() {
 		}
 		
 		if(has_app_data_flag && binding.update != abstract_method){
-			binding.app_data.update(binding);
+			binding.appData.update(binding);
 		}
 	};
 	
@@ -672,10 +695,11 @@ Tag = function() {
 		binding ={
 			element : $element,
 			app : app,
-			app_data : app_data,
-			local_data : local_data,
-			bind_exp : $element.attr("data-bind"),
-			update : self.update
+			appData : app_data,
+			localData : local_data,
+			bindExp : $element.attr("data-bind"),
+			update : self.update,
+			val : get_bind_value
 		},
 		
 		rt = self.handle.call(binding);
@@ -684,7 +708,7 @@ Tag = function() {
 			binding.element = typeof rt == "string" ? $("<div>" + rt + "</div>").contents()	: rt;
 		}
 		
-		if(binding.bind_exp){
+		if(binding.bindExp){
 			self.bind(binding);
 		}
 		
@@ -969,6 +993,7 @@ jCtrl = new function jCtrl(){
 		
 		load_config = function(urls){
 			connector.load(urls).ready(function(cfgs){
+				
 				var imports = [], i, path, import_url;
 				for(i = 0;i<cfgs.length;i++){
 					path = r_path.exec(this.doneUrls[i])[1];
@@ -1015,6 +1040,10 @@ jCtrl = new function jCtrl(){
 				}
 			});
 		};
+		
+		connector.error(function(url){
+			throw new Error("Load config files: " + url + " failed.");
+		});
 
 		if(arguments.length == 0){
 			return new App($app);
@@ -1135,8 +1164,7 @@ $.extend(Adapter,{
 	}
 });
 
-//xml类型适配器，将xml数据对象转换成JSON对象
-
+//XML类型适配器，将xml数据对象转换成JSON对象
 jCtrl.extend("Adapter", function() {
 	
 	this.type = "xml";
@@ -1147,7 +1175,6 @@ jCtrl.extend("Adapter", function() {
 		
 		if (xml.nodeType == 1) { 
 			if (xml.attributes.length > 0) {
-			obj["@attributes"] = {};
 				for (var j = 0; j < xml.attributes.length; j++) {
 					var attribute = xml.attributes.item(j);
 					obj["@" + attribute.nodeName] = attribute.nodeValue;
@@ -1204,7 +1231,7 @@ jCtrl.extend("Adapter", function() {
 	};
 })
 
-//html view adapter
+//HTML视图适配器
 .extend("Adapter", function() {
 	
 	this.type = "html";
@@ -1214,9 +1241,9 @@ jCtrl.extend("Adapter", function() {
 	};
 })
 
-//TODO: Extend Tag Parser
+//TODO: 扩展基本标签
 
-// Text Tag
+//基本文本绑定标签
 .extend("Tag", function(){
 	
 	var self = this;
@@ -1226,13 +1253,14 @@ jCtrl.extend("Adapter", function() {
 	};
 	this.handle = function(){
 		var binding = this;
-		binding.element.text(binding.app_data.el(binding.bind_exp, binding.local_data));
+		binding.element.text(binding.val());
 	};
 	this.update = function() {
 		self.handle.call(this);
 	};
 })
 
+//set标签
 .extend("Tag", function(){
 	
 	this.name = "set";
@@ -1240,40 +1268,40 @@ jCtrl.extend("Adapter", function() {
 	this.handle = function(){
 		var binding = this,
 		var_name = binding.element.attr("val"),
-		var_value = binding.app_data.el(binding.element.attr("value"), binding.local_data);
+		var_value = binding.val("@value");
 		
 		if(var_name){
 			if(var_name.indexOf("local.") == 0){
 				var_name = var_name.substr(6);
-				if(!binding.local_data[var_name]){
-					binding.local_data[var_name] = new Data();
+				if(!binding.localData[var_name]){
+					binding.localData[var_name] = new Data();
 				}
-				binding.local_data[var_name].set(var_value);
+				binding.localData[var_name].set(var_value);
 			}else{
-				binding.app_data[var_name].set(var_value);
+				binding.appData[var_name].set(var_value);
 			}
 		}
 	};
 })
 
+//foreach标签
 .extend("Tag", function() {
 	
 	this.name = "foreach";
 	
-	//Self handle contents
 	this.parseChild = false;
 	
 	this.handle = function() {
 		var binding = this;
 		var	element = binding.element,
 		attr_var = element.attr("var"),
-		begin = Number(binding.app_data.el(element.attr("begin"))) || 0, 
-		end = Number(binding.app_data.el(element.attr("end"))), 
+		begin = Number(binding.val("@begin")) || 0, 
+		end = Number(binding.val("@end")), 
 		items = $.trim(element.attr("items")),
 		new_element = $("<div></div>");
 
 		if(items){
-			items = binding.app_data.el(items);
+			items = binding.val(items);
 			for(var i in items){
 				var child_data = new Data();
 
@@ -1281,17 +1309,17 @@ jCtrl.extend("Adapter", function() {
 
 				var temp_child_element = element.contents().clone();
 				new_element.append(temp_child_element);
-				Tag.parse(temp_child_element, binding.app, child_data, binding.local_data);
+				Tag.parse(temp_child_element, binding.app, child_data, binding.localData);
 			}
 		} else if(end) {
 			for ( var i = begin; i <= end; i++) {
-				var child_data = new Data(binding.app_data);
+				var child_data = new Data(binding.appData);
 				child_data.define(attr_var);
 				child_data.set(attr_var, i);
 
 				var temp_child_element = element.contents().clone();
 				new_element.append(temp_child_element);
-				Tag.parse(temp_child_element, binding.app, child_data, binding.local_data);
+				Tag.parse(temp_child_element, binding.app, child_data, binding.localData);
 			}
 		}
 		binding.element = new_element.contents();
@@ -1299,15 +1327,18 @@ jCtrl.extend("Adapter", function() {
 	};
 })
 
+//out标签
+//out标签仅输出文本内容，不进行数据绑定
 .extend("Tag", function(){
 	
 	this.name = "out";
 	
 	this.handle = function(){
-		this.element = $("<span></span>").text(this.app_data.el(this.element.attr("value"),this.local_data));
+		this.element = $("<span></span>").text(this.val(this.element.attr("value")));
 	};
 })
 
+//choose标签
 .extend("Tag", function(){
 	
 	var self = this;
@@ -1320,7 +1351,7 @@ jCtrl.extend("Adapter", function() {
 		contents = binding.element.children();
 		
 		binding.element = null;
-		binding.bind_exp = "";
+		binding.bindExp = "";
 		binding.placeholder = placeholder;
 		binding.contents = [];
 		
@@ -1330,7 +1361,7 @@ jCtrl.extend("Adapter", function() {
 			test = sub.attr("test") || "",
 			element = sub.contents();
 			
-			binding.bind_exp += test;
+			binding.bindExp += test;
 			
 			binding.contents.push({
 				name : tag_name,
@@ -1347,7 +1378,7 @@ jCtrl.extend("Adapter", function() {
 				binding.element = element;
 				return;
 			}else if(tag_name == "when"){
-				if(binding.app_data.el(test, binding.local_data) == true ){
+				if(binding.val(test) == true ){
 					binding.element =  element;
 				}		
 			}
@@ -1368,7 +1399,7 @@ jCtrl.extend("Adapter", function() {
 				binding.element = element;
 				return;
 			}else if(tag_name == "when"){
-				if(binding.app_data.el(test, binding.local_data) == true){
+				if(binding.val(test) == true){
 					if(element != binding.element){
 						binding.element.replaceWith(element);
 						binding.element = element;
@@ -1381,6 +1412,7 @@ jCtrl.extend("Adapter", function() {
 	
 })
 
+//if标签
 .extend("Tag", function(){
 	
 	this.name="if";
@@ -1389,11 +1421,11 @@ jCtrl.extend("Adapter", function() {
 		var binding = this,	
 		placeholder = $("<span class='placeholder'></span>");
 
-		binding.bind_exp = binding.element.attr("test");
+		binding.bindExp = binding.element.attr("test");
 		binding.placeholder = placeholder;
 		binding.contents = binding.element.contents();
 		
-		if(binding.app_data.el(binding.bind_exp, binding.local_data) == true){
+		if(binding.val() == true){
 			binding.element =  binding.contents;
 			binding.parsed = true; 
 		}else{
@@ -1406,18 +1438,18 @@ jCtrl.extend("Adapter", function() {
 	this.update = function(){
 		var binding = this;
 		if( binding.element == binding.placeholder  				
-			&& binding.app_data.el(binding.bind_exp, binding.local_data) == true){
+			&& binding.val() == true){
 			
 			binding.placeholder.replaceWith(binding.contents);
 			binding.element = binding.contents;
 			
 			if(!binding.parsed){
 				binding.parsed = true;
-				Tag.parse(binding.element, binding.app, binding.app_data, binding.local_data);
+				Tag.parse(binding.element, binding.app, binding.appData, binding.localData);
 			}
 			
 		}else if (binding.element == binding.contents  
-			&& binding.app_data.el(binding.bind_exp, binding.local_data) == false){
+			&& binding.val() == false){
 			
 			binding.contents.replaceWith(binding.placeholder);
 			binding.element = binding.placeholder;
@@ -1426,7 +1458,7 @@ jCtrl.extend("Adapter", function() {
 	};
 })
 
-//View Tag 
+//TODO: 扩展视图标签
 .extend("Tag", function() {
 	this.name = "xa";
 	this.handle = function() {
