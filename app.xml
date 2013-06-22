@@ -12,7 +12,7 @@
 		<url>cn/default.xml</url>
 	</bean>
 
-	<bean id="home" class="view" data="app.xml" require=".js" />
+	<bean id="home" class="view" data="test/home.json" dataType="json" require=".js" />
 
 	<import resource="map.xml" />
 

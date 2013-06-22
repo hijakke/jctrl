@@ -1,15 +1,18 @@
 <div xmlns:j="http://jctrl.org/tags">
 
-	<j:set val="local.x" value="{1}" />
+	<j:set val="local.x" value="{0}" />
 	
-	<span data-bind="length: {bean.length}" ></span>
+	<span data-bind="length: {list.length}, page: {local.x + 1}"></span>
 	
-	<j:foreach var="i" items="{bean}" >
+	<span data-bind=""></span>
+	
+	<j:foreach var="i" begin="{local.x*3}" end="{local.x*3+2 < list.length-1 ? local.x*3+2  : list.length-1 }" >
 		<div style="white-space: nowrap;">
-			<span data-bind="id: {i.@id}"></span>
+			<span data-bind="item: {list[i]}"></span>
 		</div>
 	</j:foreach>
-
+	
+	
 	<input type="button" value="BIND" />
 
 </div>
