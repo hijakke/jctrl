@@ -1,9 +1,5 @@
-//(function(window, $, undefined) {
+(function(window, $, undefined) {
 
-
-/*
- *  
- */
 var Data = function(data) {
 	
 	var self = this, 
@@ -994,7 +990,7 @@ LogFactory = (function(){
 	};
 })(),
 
-jCtrl = new function jCtrl(){
+jCtrl = new function (){
 	
 	this.extend = function(abst, impl) {
 		abst = {Adapter:Adapter, Tag:Tag}[abst];
@@ -1328,6 +1324,25 @@ jCtrl.extend("Adapter", function() {
 	
 	this.parseChild = false;
 	
+	
+		var append_new_content = function(key, value, container, binding) {
+			console.log("dom create");
+			var new_content = {
+				data : new Data(binding.appData),
+				element : binding.template.clone(),
+				key : key
+			};
+
+			new_content.data.define(binding.attrVar, value);
+			
+			container.append(new_content.element);
+
+			Tag.parse(new_content.element, binding.app, new_content.data, binding.localData);
+
+			binding.contents[key] = new_content;
+		}; 
+
+	
 	this.handle = function() {
 		var binding = this,
 		attr_var = binding.attrVar = binding.element.attr("var"),
@@ -1336,7 +1351,7 @@ jCtrl.extend("Adapter", function() {
 		items = binding.val("@items"),
 		new_element = $("<div></div>");
 
-		binding.contents = [];
+		binding.contents = {};
 		binding.template = binding.element.contents();
 		
 		binding.bindTo("@end");
@@ -1344,37 +1359,17 @@ jCtrl.extend("Adapter", function() {
 		if(items && typeof items != "string"){
 			for(var i in items){
 				
-				var new_content = {
-					data : new Data(binding.appData),
-					element :binding.template.clone(),
-					key : i
-				};
-	
-				new_content.data.define(attr_var, items[i]);
-				new_element.append(new_content.element);
-				
-				Tag.parse(new_content.element, binding.app, new_content.data, binding.localData);
-				
-				binding.contents.push(new_content);
+				append_new_content(i, items[i], new_element, binding);
 				
 			}
 		} else if(end) {
 			for ( var i = begin; i <= end; i++) {
 				
-				var new_content = {
-					data : new Data(binding.appData),
-					element : binding.template.clone(),
-					key : i
-				};
+				append_new_content(i, i, new_element, binding);
 				
-				new_content.data.define(attr_var, i);
-				new_element.append(new_content.element);
-				
-				Tag.parse(new_content.element, binding.app, new_content.data, binding.localData);
-				
-				binding.contents.push(new_content);
 			}
 		}
+		
 		binding.element = new_element.contents();
 
 	};
@@ -1387,42 +1382,27 @@ jCtrl.extend("Adapter", function() {
 		items =  binding.val("@items"),
 		new_element = $("<div></div>");
 
-		binding.contents = [];
 		
 		if(items && typeof items != "string"){
 			
 			
 			for(var i in items){
 				
-				var new_content = {
-					data : new Data(binding.appData),
-					element :binding.template.clone(),
-					key : i
-				};
-	
-				new_content.data.define(attr_var, items[i]);
-				new_element.append(new_content.element);
-				
-				Tag.parse(new_content.element, binding.app, new_content.data, binding.localData);
-				
-				binding.contents.push(new_content);
+				if(!binding.contents.hasOwnProperty(i)){
+					append_new_content(i, items[i], new_element, binding);
+				}else{
+					new_element.append(binding.contents[i].element);
+				}
 				
 			}
 		} else if(end) {
 			for ( var i = begin; i <= end; i++) {
 				
-				var new_content = {
-					data : new Data(binding.appData),
-					element : binding.template.clone(),
-					key : i
-				};
-				
-				new_content.data.define(attr_var, i);
-				new_element.append(new_content.element);
-				
-				Tag.parse(new_content.element, binding.app, new_content.data, binding.localData);
-				
-				binding.contents.push(new_content);
+				if(!binding.contents.hasOwnProperty(i)){
+					append_new_content(i, i, new_element, binding);
+				}else{
+					new_element.append(binding.contents[i].element);
+				}
 			}
 		}
 		new_element = new_element.contents();
@@ -1563,5 +1543,5 @@ jCtrl.extend("Adapter", function() {
 	};
 });
 
-//window.jCtrl = jCtrl;
-//})(window, jQuery);
+window.jCtrl = jCtrl;
+})(window, jQuery);
