@@ -1348,7 +1348,7 @@ jCtrl.extend("Adapter", function() {
 					data : new Data(binding.appData),
 					element :binding.template.clone(),
 					key : i
-				}
+				};
 	
 				new_content.data.define(attr_var, items[i]);
 				new_element.append(new_content.element);
@@ -1365,7 +1365,7 @@ jCtrl.extend("Adapter", function() {
 					data : new Data(binding.appData),
 					element : binding.template.clone(),
 					key : i
-				}
+				};
 				
 				new_content.data.define(attr_var, i);
 				new_element.append(new_content.element);
@@ -1398,7 +1398,7 @@ jCtrl.extend("Adapter", function() {
 					data : new Data(binding.appData),
 					element :binding.template.clone(),
 					key : i
-				}
+				};
 	
 				new_content.data.define(attr_var, items[i]);
 				new_element.append(new_content.element);
@@ -1415,7 +1415,7 @@ jCtrl.extend("Adapter", function() {
 					data : new Data(binding.appData),
 					element : binding.template.clone(),
 					key : i
-				}
+				};
 				
 				new_content.data.define(attr_var, i);
 				new_element.append(new_content.element);
@@ -1561,53 +1561,6 @@ jCtrl.extend("Adapter", function() {
 			
 		}
 	};
-})
-
-//TODO: 扩展视图标签
-.extend("Tag", function() {
-	this.name = "xa";
-	this.handle = function() {
-		var binding = this;
-		var href = /^#?([^?]+)?/.exec( binding.element.attr("href") || "" )[1] || "" ;
-		var new_element = $("<a href='#" + href + "'></a>");
-		new_element.click(function(){
-			var curView = /^#?([^?]+)?/.exec(location.hash)[1];
-			if(href && curView !== href ){
-				binding.app.loadView($("#container"), href);
-			}
-		}).html(binding.element.html());
-		
-		binding.element = new_element;
-	};
-})
-
-.extend("Tag", function() {
-	this.name = "xinput";
-	this.handle = function() {
-		var binding = this;
-		var new_element = $("<input type=\"text\"/>");
-
-		new_element.attr("style", "padding-left:5px;font-size: 18px;" 
-				+ "height: 32px;border: 1px solid #666;border-radius: 4px;line-height: 32px;").focus(function() {
-			if (new_element.val() === String(binding.app_data.el(binding.bind_exp, binding.local_data))) {
-				new_element.val("");
-				new_element.css("color", "#000");
-			}
-		}).blur(function() {
-			if (new_element.val() === "" || new_element.val() === String(binding.app_data.el(binding.bind_exp, binding.local_data))) {
-				new_element.val(String(binding.app_data.el(binding.bind_exp, binding.local_data)));
-				new_element.css("color", "#999");
-			}
-		}).val(String(binding.app_data.el(binding.bind_exp, binding.local_data))).css("color", "#999");
-		
-		return new_element;
-	};
-	
-	this.update = function(){
-		var binding = this;
-		binding.element.val(String(binding.app_data.el(binding.bind_exp, binding.local_data))).css("color", "#999");
-	};
-	
 });
 
 //window.jCtrl = jCtrl;
