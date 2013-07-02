@@ -28,12 +28,15 @@ var Data = function(data) {
 	// 将el表达式转换成js表达式 
 	// '(?:\\'|[^'])*' 过渡单引号字符串 
 	// "(?:\\"|[^"])*" 过滤双引号字符串
-	// \b[_$a-zA-Z][_$\w]*(?:(?:\[|\.)[^\[\].]*\]?)* 获取变量名，计算变量值加入参数列表
+	// \b[_$a-zA-Z][_$\w]*(?:\.[_$\w]*|\[[^\[\]]*\])* 获取变量名，计算变量值加入参数列表
 	// (?:\s*\()? 过滤函数	
 	rkey_replace = /'(?:\\'|[^'])*'|"(?:\\"|[^"])*"|\b[_$a-zA-Z][_$\w]*(?:\.[_$\w]*|\[[^\[\]]*\])*(?:\s*\()?/g,
 	
 	//处理中括号运算符，取出其中变量并计算其值
-	rkey_replace_operator = /\[(?!['"])([^\[\]])*\]/g,
+	rkey_replace_operator = /\[(?!['"\d])([^\[\]])*\]/g,
+	
+	//截取字符串中的el表达式
+	rget_el_in_str = /[$#]?{((?:'[^']*'|"[^']*"|[^{}]+)+)}/g,
 	 
 	val = function() {
 		try {
@@ -178,7 +181,7 @@ var Data = function(data) {
 				return str;
 			}
 			var proto_result, cur_exp;		
-			str = str.replace(/[$#]?{('[^']*'|"[^']*"|[^{}]+)?}/g, function(full, exp_str) {				
+			str = str.replace(rget_el_in_str, function(full, exp_str) {				
 				cur_exp = exp_str;				
 				
 				//如果字符串只包含el表达式，返回原型对象
@@ -660,9 +663,9 @@ Tag = function() {
 	bind_to_value = function(el){
 		if(el.indexOf("@") == 0){
 			if(this.attrExp.hasOwnProperty(el)){
-				this.bindExp = this.attrExp[el]; 
+				this.bindExp += this.attrExp[el]; 
 			}else{
-				this.bindExp = this.attrExp[el] = this.element.attr(el.substr(1));					
+				this.bindExp += this.attrExp[el] = this.element.attr(el.substr(1));					
 			} 
 		}else{
 			this.bindExp = el;
@@ -745,7 +748,7 @@ Tag = function() {
 			self.bind(binding);
 		}
 		
-		if($element !== binding.element && $element[0] !== binding.element[0]){
+		if($element !== binding.element && binding.element && $element[0] !== binding.element[0]){
 			$element.replaceWith(binding.element);
 		}
 		
@@ -780,7 +783,7 @@ Controller = function(app) {
 	
 	this.load = function($container, key){
 		var map = app.map(key),	
-		$wrapper = $("<div></div>"),		
+		$wrapper = $("<span>"),		
 		view_loaded_count = 0,
 		view_required_count = 0,
 		required_views = {},
@@ -1145,20 +1148,28 @@ $.extend(Tag, {
 //			 }
 //		 }
 
-		var parse = function ($ele, app_data) {
+		//保存解析后的雪元素
+		var container = $(),
+		
+		//递归处理每个元素
+		parse = function ($ele, app_data) {
 			
 			var	tag_name = Tag.getTagName($ele),
 			tag = Tag.get(tag_name);
 
 			if (tag) {
+				
+				//解析后的元素可以是原来元素或是新的元素
 				var replaced = tag.parse($ele, app, app_data, local_data);				
 				
-				if (tag.parseChild) {
+				//扩展标签未标识自己处理子元素
+				if (tag.parseChild && replaced) {
 					var subs = replaced.size() > 1 ? replaced : replaced.children();
 					for (var j = 0; j < subs.size(); j++) {
 						parse(subs.eq(j), app_data);
 					}
 				}
+				return replaced;
 			} else {
 
 				var subs = $ele.children();
@@ -1169,17 +1180,21 @@ $.extend(Tag, {
 				for (var j = 0; j < subs.size(); j++) {
 					parse(subs.eq(j), app_data);
 				}
+				return $ele;
 			}
 		};
 		
 		if ($element.size() > 1) {
 			for (var i = 0; i < $element.size(); i++) {
-				parse($element.eq(i), app_data);
+				Array.prototype.push.apply(container, 
+						parse($element.eq(i), app_data) || []);
 			}
 		} else {
-			parse($element, app_data);
+			Array.prototype.push.apply(container, 
+					parse($element, app_data) || []);
 		}
-
+		
+		return container;
 	}
 });
 
@@ -1285,8 +1300,7 @@ jCtrl.extend("Adapter", function() {
 		return /^span|h[1-6]$/.test(name);
 	};
 	this.handle = function(){
-		var binding = this;
-		binding.element.text(binding.val());
+		this.element.text(this.val());
 	};
 	this.update = function() {
 		self.handle.call(this);
@@ -1314,6 +1328,8 @@ jCtrl.extend("Adapter", function() {
 				binding.appData[var_name].set(var_value);
 			}
 		}
+		
+		binding.element.remove();
 	};
 })
 
@@ -1326,47 +1342,47 @@ jCtrl.extend("Adapter", function() {
 	
 	
 		var append_new_content = function(key, value, container, binding) {
-			console.log("dom create");
+			
 			var new_content = {
 				data : new Data(binding.appData),
 				element : binding.template.clone(),
 				key : key
 			};
-
+			
 			new_content.data.define(binding.attrVar, value);
+			new_content.element = Tag.parse(new_content.element, binding.app, new_content.data, binding.localData);
 			
 			container.append(new_content.element);
-
-			Tag.parse(new_content.element, binding.app, new_content.data, binding.localData);
-
+			
 			binding.contents[key] = new_content;
 		}; 
 
 	
 	this.handle = function() {
 		var binding = this,
-		attr_var = binding.attrVar = binding.element.attr("var"),
 		begin = Number(binding.val("@begin")) || 0, 
 		end = Number(binding.val("@end")), 
 		items = binding.val("@items"),
-		new_element = $("<div></div>");
-
+		new_element = $("<div>");
+		
+		binding.attrVar = binding.element.attr("var");
 		binding.contents = {};
 		binding.template = binding.element.contents();
 		
-		binding.bindTo("@end");
-		
 		if(items && typeof items != "string"){
-			for(var i in items){
-				
-				append_new_content(i, items[i], new_element, binding);
-				
+
+			binding.bindTo("@items");
+			
+			for(var i in items){				
+				append_new_content(i, items[i], new_element, binding);				
 			}
 		} else if(end) {
-			for ( var i = begin; i <= end; i++) {
-				
-				append_new_content(i, i, new_element, binding);
-				
+
+			binding.bindTo("@begin");
+			binding.bindTo("@end");
+			
+			for ( var i = begin; i <= end; i++) {				
+				append_new_content(i, i, new_element, binding);				
 			}
 		}
 		
@@ -1376,12 +1392,13 @@ jCtrl.extend("Adapter", function() {
 	
 	this.update = function(){
 		var binding = this,
-		attr_var = binding.attrVar,
 		begin = Number(binding.val("@begin")) || 0, 
 		end =  Number(binding.val("@end")), 
 		items =  binding.val("@items"),
-		new_element = $("<div></div>");
+		new_element = $("<span>"),
+		placeholder = $("<span>");
 
+		binding.element.replaceWith(placeholder);
 		
 		if(items && typeof items != "string"){
 			
@@ -1406,7 +1423,7 @@ jCtrl.extend("Adapter", function() {
 			}
 		}
 		new_element = new_element.contents();
-		binding.element.replaceWith(new_element);
+		placeholder.replaceWith(new_element);
 		binding.element = new_element;		
 	};
 	
@@ -1419,7 +1436,7 @@ jCtrl.extend("Adapter", function() {
 	this.name = "out";
 	
 	this.handle = function(){
-		this.element = $("<span></span>").text(this.val(this.element.attr("value")));
+		this.element = $("<span></span>").text(this.val("@value"));
 	};
 })
 
@@ -1432,7 +1449,7 @@ jCtrl.extend("Adapter", function() {
 	
 	this.handle = function(){
 		var binding = this,
-		placeholder = $("<span class='placeholder'></span>"),
+		placeholder = $("<span>"),
 		contents = binding.element.children();
 		
 		binding.element = null;
@@ -1543,5 +1560,7 @@ jCtrl.extend("Adapter", function() {
 	};
 });
 
+window.Log = LogFactory;
+window.Data = Data;
 window.jCtrl = jCtrl;
 })(window, jQuery);

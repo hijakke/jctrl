@@ -4,10 +4,8 @@
 
 	<span data-bind="length: {list.length}, page: {local.x + 1}"></span>
 
-	<span data-bind=""></span>
-
-	<j:foreach var="i" begin="{local.x*13}" end="{local.x*13+12 }" >
-		<j:if test="{!!list[i]}">
+	<j:foreach var="i" begin="{local.x}" end="{list.length}" >
+		<j:if test="{list[i] !== ''}">
 			<div style="white-space: nowrap;">
 				<span data-bind="item: {list[i]}"></span>
 			</div>
