@@ -126,7 +126,7 @@ var Data = function(data) {
 		pool = {json : {}};
 		chain.update(self);
 	}else{
-		pool = {json : data || {}};
+		pool = {json : data === undefined ? {} : data};
 	}
 	
 	//计算el表达式的值后，表达式中的变量名会保存在keys数组中
@@ -260,16 +260,16 @@ Connector = function() {
 				}
 			}
 			if(task_list.length == 0){
-				try{
+				//try{
 					for(var i =0;i<clear_fns.length;i++){
 						clear_fns[i]();
 					}
-				}
-				finally{
+				//
+				//finally{
 					clear_fns=[];
 					error_fns=[];
 					progress_fns = [];
-				}
+				//}
 			}
 		}
 	},
@@ -653,7 +653,7 @@ Tag = function() {
 				if(this.attrExp.hasOwnProperty(el)){
 					el = this.attrExp[el];
 				}else{
-					el = this.attrExp[el] = this.element.attr(el.substr(1));					
+					el = this.attrExp[el] = this.original.attr(el.substr(1));					
 				} 
 			}
 			return this.appData.el(el, this.localData);
@@ -665,7 +665,7 @@ Tag = function() {
 			if(this.attrExp.hasOwnProperty(el)){
 				this.bindExp += this.attrExp[el]; 
 			}else{
-				this.bindExp += this.attrExp[el] = this.element.attr(el.substr(1));					
+				this.bindExp += this.attrExp[el] = this.original.attr(el.substr(1));					
 			} 
 		}else{
 			this.bindExp = el;
@@ -727,6 +727,7 @@ Tag = function() {
 		
 		var self = this,
 		binding ={
+			original : $element,
 			element : $element,
 			app : app,
 			attrExp : {},
@@ -1151,6 +1152,7 @@ $.extend(Tag, {
 		//保存解析后的雪元素
 		var container = $(),
 		
+		parsed_temp,
 		//递归处理每个元素
 		parse = function ($ele, app_data) {
 			
@@ -1186,12 +1188,16 @@ $.extend(Tag, {
 		
 		if ($element.size() > 1) {
 			for (var i = 0; i < $element.size(); i++) {
-				Array.prototype.push.apply(container, 
-						parse($element.eq(i), app_data) || []);
+				parsed_temp = parse($element.eq(i), app_data);
+				if(parsed_temp){
+					Array.prototype.push.apply(container, parsed_temp.toArray());
+				}
 			}
 		} else {
-			Array.prototype.push.apply(container, 
-					parse($element, app_data) || []);
+			parsed_temp = parse($element, app_data);
+			if(parsed_temp){
+				Array.prototype.push.apply(container, parsed_temp.toArray());
+			}
 		}
 		
 		return container;
@@ -1340,23 +1346,21 @@ jCtrl.extend("Adapter", function() {
 	
 	this.parseChild = false;
 	
-	
-		var append_new_content = function(key, value, container, binding) {
-			
-			var new_content = {
-				data : new Data(binding.appData),
-				element : binding.template.clone(),
-				key : key
-			};
-			
-			new_content.data.define(binding.attrVar, value);
-			new_content.element = Tag.parse(new_content.element, binding.app, new_content.data, binding.localData);
-			
-			container.append(new_content.element);
-			
-			binding.contents[key] = new_content;
-		}; 
-
+	var append_new_content = function(key, value, container, binding) {
+		
+		var new_content = {
+			data : new Data(binding.appData),
+			element : binding.template.clone(),
+			key : key
+		};
+		
+		new_content.data.define(binding.attrVar, value);
+		new_content.element = Tag.parse(new_content.element, binding.app, new_content.data, binding.localData);
+		
+		container.append(new_content.element);
+		
+		binding.contents[key] = new_content;
+	}; 
 	
 	this.handle = function() {
 		var binding = this,
@@ -1430,13 +1434,16 @@ jCtrl.extend("Adapter", function() {
 })
 
 //out标签
-//out标签仅输出文本内容，不进行数据绑定
 .extend("Tag", function(){
 	
 	this.name = "out";
 	
 	this.handle = function(){
 		this.element = $("<span></span>").text(this.val("@value"));
+		this.bindTo("@value");
+	};
+	this.update = function(){
+		this.element.text(this.val("@value"));
 	};
 })
 
@@ -1452,7 +1459,7 @@ jCtrl.extend("Adapter", function() {
 		placeholder = $("<span>"),
 		contents = binding.element.children();
 		
-		binding.element = null;
+		binding.element = placeholder;
 		binding.bindExp = "";
 		binding.placeholder = placeholder;
 		binding.contents = [];
@@ -1472,7 +1479,7 @@ jCtrl.extend("Adapter", function() {
 				parsed : false
 			});
 			
-			if(binding.element){
+			if(binding.element != placeholder){
 				continue;
 			}
 			

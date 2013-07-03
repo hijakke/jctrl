@@ -2,12 +2,12 @@
 
 	<j:set val="local.x" value="{0}" />
 
-	<span data-bind="length: {list.length}, page: {local.x + 1}"></span>
+	<j:out value="length: {list.length}, page: {local.x + 1}"></j:out>
 
-	<j:foreach var="i" begin="{local.x}" end="{list.length}" >
-		<j:if test="{list[i] !== ''}">
+	<j:foreach var="i" items="{list}" >
+		<j:if test="{i !== ''}">
 			<div style="white-space: nowrap;">
-				<span data-bind="item: {list[i]}"></span>
+				<span data-bind="item: {i}"></span>
 			</div>
 		</j:if>
 	</j:foreach>
