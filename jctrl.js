@@ -1528,13 +1528,13 @@ jCtrl.extend("Adapter", function() {
 	
 	this.handle = function(){
 		var binding = this,	
-		placeholder = $("<span class='placeholder'></span>");
+		placeholder = $("<span>");
 
-		binding.bindExp = binding.element.attr("test");
+		binding.bindTo("@test");
 		binding.placeholder = placeholder;
 		binding.contents = binding.element.contents();
 		
-		if(binding.val() == true){
+		if(binding.val() === true){
 			binding.element =  binding.contents;
 			binding.parsed = true; 
 		}else{
