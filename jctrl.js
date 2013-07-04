@@ -675,6 +675,7 @@ Tag = function() {
 	//匹配标签命名空间并截取标签名
 	this.matchNS = function(name){
 		var prefix = /(?:([^:]*):)?(.*)/.exec(name);
+		//不包含前缀
 		if(!this.ns && !prefix[1]){
 			return name;
 		}else {
@@ -733,7 +734,7 @@ Tag = function() {
 			attrExp : {},
 			appData : app_data,
 			localData : local_data,
-			bindExp : $element.attr("data-bind"),
+			bindExp : "",
 			update : self.update,
 			val : get_bind_value,
 			bindTo : bind_to_value
@@ -1300,16 +1301,30 @@ jCtrl.extend("Adapter", function() {
 //基本文本绑定标签
 .extend("Tag", function(){
 	
-	var self = this;
 	this.ns = "";
 	this.matchTag = function(name){
 		return /^span|h[1-6]$/.test(name);
 	};
 	this.handle = function(){
+		this.bindTo("@data-bind");
 		this.element.text(this.val());
 	};
 	this.update = function() {
-		self.handle.call(this);
+		this.element.text(this.val());
+	};
+})
+
+.extend("Tag", function(){
+	
+	this.ns = "";
+	this.name = "input";
+	
+	this.handle = function(){
+		this.bindTo("@data-bind");
+		this.element.text(this.val());
+	};
+	this.update = function() {
+		this.element.text(this.val());
 	};
 })
 
@@ -1406,17 +1421,16 @@ jCtrl.extend("Adapter", function() {
 		
 		if(items && typeof items != "string"){
 			
-			
 			for(var i in items){
 				
 				if(!binding.contents.hasOwnProperty(i)){
 					append_new_content(i, items[i], new_element, binding);
 				}else{
 					new_element.append(binding.contents[i].element);
-				}
-				
+				}				
 			}
 		} else if(end) {
+			
 			for ( var i = begin; i <= end; i++) {
 				
 				if(!binding.contents.hasOwnProperty(i)){
@@ -1460,7 +1474,6 @@ jCtrl.extend("Adapter", function() {
 		contents = binding.element.children();
 		
 		binding.element = placeholder;
-		binding.bindExp = "";
 		binding.placeholder = placeholder;
 		binding.contents = [];
 		
@@ -1469,6 +1482,11 @@ jCtrl.extend("Adapter", function() {
 			tag_name = self.matchNS(Tag.getTagName(sub)),
 			test = sub.attr("test") || "",
 			element = sub.contents();
+			
+			//如果判断分支下内容为空，使用占位符代替
+			if(element.size() == 0){
+				element = $("<span>");
+			}
 			
 			binding.bindExp += test;
 			
@@ -1479,6 +1497,7 @@ jCtrl.extend("Adapter", function() {
 				parsed : false
 			});
 			
+			//已经有判断为真的分支，不再继续寻找
 			if(binding.element != placeholder){
 				continue;
 			}

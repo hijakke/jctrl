@@ -4,13 +4,7 @@
 
 	<j:out value="length: {list.length}, page: {local.x + 1}"></j:out>
 
-	<j:foreach var="i" items="{list}" >
-		<j:if test="{i !== ''}">
-			<div style="white-space: nowrap;">
-				<span data-bind="item: {i}"></span>
-			</div>
-		</j:if>
-	</j:foreach>
+	<j:if test="{local.x===1}">true</j:if>
 
 	<input type="button" value="BIND" />
 
