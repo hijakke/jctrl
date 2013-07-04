@@ -668,7 +668,7 @@ Tag = function() {
 				this.bindExp += this.attrExp[el] = this.original.attr(el.substr(1));					
 			} 
 		}else{
-			this.bindExp = el;
+			this.bindExp += el;
 		}
 	};
 	
@@ -1320,11 +1320,24 @@ jCtrl.extend("Adapter", function() {
 	this.name = "input";
 	
 	this.handle = function(){
-		this.bindTo("@data-bind");
-		this.element.text(this.val());
+		var binding = this,
+		type=binding.element.attr("type");
+		
+		switch(type) {
+			case "text":
+				binding.bindTo("@value");
+				binding.element.val(binding.val());
+				binding.element.change(function(){
+					binding.localData['x'].set(binding.element.val());
+				});
+				break;
+		}
+
+		
 	};
 	this.update = function() {
-		this.element.text(this.val());
+		var binding = this;
+		binding.element.val(binding.val());
 	};
 })
 
@@ -1418,6 +1431,7 @@ jCtrl.extend("Adapter", function() {
 		placeholder = $("<span>");
 
 		binding.element.replaceWith(placeholder);
+		binding.element = placeholder;
 		
 		if(items && typeof items != "string"){
 			
@@ -1441,8 +1455,10 @@ jCtrl.extend("Adapter", function() {
 			}
 		}
 		new_element = new_element.contents();
-		placeholder.replaceWith(new_element);
-		binding.element = new_element;		
+		if(new_element.size()>0){
+			placeholder.replaceWith(new_element);
+			binding.element = new_element;
+		}		
 	};
 	
 })

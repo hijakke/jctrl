@@ -1,10 +1,16 @@
 <div xmlns:j="http://jctrl.org/tags">
 
-	<j:set val="local.x" value="{0}" />
+	<j:set val="local.x" value="{1}" />
 
-	<j:out value="length: {list.length}, page: {local.x + 1}"></j:out>
+	<input type="text" value="{local.x}" />
 
-	<j:if test="{local.x===1}">true</j:if>
+	<j:out value="length: {list.length}, x: {local.x}"></j:out>
+
+	<j:foreach begin="{0}" end="{local.x}" var ="i">
+		<div>
+			<j:out value="{i}" /><j:out value="{i}" /><j:out value="{i}" /><j:out value="{i}" /><j:out value="{i}" /><j:out value="{i}" /><j:out value="{i}" /><j:out value="{i}" /><j:out value="{i}" /><j:out value="{i}" /><j:out value="{i}" /><j:out value="{i}" /><j:out value="{i}" /><j:out value="{i}" /><j:out value="{i}" /><j:out value="{i}" /><j:out value="{i}" /><j:out value="{i}" /><j:out value="{i}" /><j:out value="{i}" /><j:out value="{i}" /><j:out value="{i}" /><j:out value="{i}" /><j:out value="{i}" />
+		</div>
+	</j:foreach>
 
 	<input type="button" value="BIND" />
 
