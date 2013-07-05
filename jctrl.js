@@ -5,7 +5,8 @@ var Data = function(data) {
 	var self = this, 
 	updater = [], 
 	pool, 
-	chain,	
+	chain,
+	key_values = {},	
 	
 	alias_map = {
 		lt : "<",
@@ -78,49 +79,52 @@ var Data = function(data) {
 
 	},
 	
-	elval = function(el, fk_list) {
+	elval = function(el, refer_data) {
 
-		var i = 0, values = [], key_values = {};
-
-		rkey_replace.lastIndex = 0;
+		var i = 0, values = [];
 		
 		el = el.replace(rkey_replace, function(full) {
 			//过滤字符串
-			if (/^['"]/.test(full)) {
+			if (full.charAt(0) === "'" || full.charAt(0) === '"' ) {
 				return full;
 			} else {
+				
 				var alias = alias_map[full];
-				if (!alias) {
-					//过滤函数
-					if (/\($/.test(full)) {
-						return "(";
-					}
-					
-					//处理中括号运算符
-					full = full.replace(rkey_replace_operator, function(_, selector){
-						return "['"+ self.get(selector) +"']";			
-					});
-					
-					//未计算过变量的值
-					if(!key_values.hasOwnProperty(full)){
-						self.keys.push(full);
-						
-						var fk_exp_rs;
-						//如果有外部变量，则判断表达式中是否有引用外部变量
-						if(fk_list){
-							fk_exp_rs = /^local\.([^.]*)(?:\.(.*))?$/.exec(full);
-						}
-						
-						if (fk_exp_rs && fk_list[fk_exp_rs[1]]) {
-							key_values[full] = fk_list[fk_exp_rs[1]].get(fk_exp_rs[2] || "");
-						} else {
-							key_values[full] = self.get(full == "this" ? "" : full);
-						}
-					}
-					values.push(key_values[full] === undefined ? "" : key_values[full]);
-					return "arguments[" + (i++) + "]";
+				if (alias) {
+					return alias;
 				}
-				return alias;
+				//过滤函数
+				if (full.charAt(full.length-1) =="(") {
+					return "(";
+				}
+				
+				//处理中括号运算符
+				full = full.replace(rkey_replace_operator, function(_, selector){
+					return "['"+ self.get(selector) +"']";			
+				});
+
+				var variable_name = /\w+/.exec(full)[0];
+
+				if(!key_values.hasOwnProperty(variable_name)){
+					key_values[variable_name] = {};
+				}
+
+				self.keys.push(full);
+				
+				//未计算过值的变量
+				if(!key_values[variable_name].hasOwnProperty(full)){
+					
+					//如果有外部变量，则判断表达式中是否有引用外部变量
+					if(variable_name == "local" && refer_data){
+						key_values[variable_name][full] = refer_data.get(full.substr(6));
+					} else {
+						key_values[variable_name][full] = self.get(full == "this" ? "" : full);
+					}
+				}
+				values.push(key_values[variable_name][full] === undefined ? "" : key_values[variable_name][full]);
+				
+				return "arguments[" + (i++) + "]";
+				
 			}
 		});
 		return (new Function("return " + el)).apply(window, values);
@@ -179,7 +183,7 @@ var Data = function(data) {
 	};
 	
 	//计算字符串中el表达式的值
-	this.el = function(str, fk_list) {
+	this.el = function(str, refer_data) {
 		try {
 			self.keys = [];
 			
@@ -192,10 +196,10 @@ var Data = function(data) {
 				
 				//如果字符串只包含el表达式，返回原型对象
 				if (str.length == full.length){
-					proto_result = elval(exp_str, fk_list);
+					proto_result = elval(exp_str, refer_data);
 					return ;
 				}
-				return String(elval(exp_str, fk_list));
+				return String(elval(exp_str, refer_data));
 			});
 			
 			return proto_result === undefined ? str : proto_result;
@@ -476,7 +480,7 @@ View = function($view, $app, app) {
  	path = $view.attr("path")  || "", 
  	scripts = [], 
  	styles = [], 	
- 	local_data = [],
+ 	local_data = new Data(),
  	data_url = $view.attr("data"),
  	app_data = new Data(app.data()),
  	
@@ -598,15 +602,12 @@ View = function($view, $app, app) {
 		
 		var script_head = "",
 		head = document.getElementsByTagName("head")[0];
-		
-		for(var j in local_data){
-			script_head += "var " + j + " = arguments[0]['" + j + "'];\n";
-		}
-		script_head += "var session = arguments[1];\n";
-		script_head += "var appData = arguments[2];\n";
+
+		script_head += "var localData = arguments[0];\n";
+		script_head += "var appData = arguments[1];\n";
 		
 		for(var i = 0; i<script_texts.length;i++){
-			(new Function(script_head + script_texts[i])).call(window, local_data, app.session, app_data);
+			(new Function(script_head + script_texts[i])).call(window, local_data, app_data);
 		}
 		
 		for (var i = 0; i < style_doms.length; i++) {
@@ -704,27 +705,24 @@ Tag = function() {
 		
 		var fk_exp = /^local\.([^.]*)(?:\.(.*))?$/, fk_exp_rs,
 		
-		has_app_data_flag = false;
+		has_app_data_flag = false,
+		has_local_data_flag = false;
 		
 		binding.appData.el(binding.bindExp);
 		
 		for ( var i = 0; i < binding.appData.keys.length; i++) {
 			fk_exp_rs = fk_exp.exec(binding.appData.keys[i]);
 			if(fk_exp_rs){
-				//generate a new Data object if first appeared
-				if(!binding.localData[fk_exp_rs[1]]){
-					binding.localData[fk_exp_rs[1]] = new Data("");
-				}
-				
-				if(binding.update != abstract_method){				
-					binding.localData[fk_exp_rs[1]].update(binding);
-				}
+				has_local_data_flag = true;
 			}
 			else{
 				has_app_data_flag = true;
 			}
 		}
 		
+		if(has_local_data_flag && binding.update != abstract_method){				
+			binding.localData.update(binding);
+		}
 		if(has_app_data_flag && binding.update != abstract_method){
 			binding.appData.update(binding);
 		}
@@ -1346,7 +1344,7 @@ jCtrl.extend("Adapter", function() {
 				binding.element.change(function(){
 
 					if(bind_key.indexOf("local.") == 0){
-						binding.localData[bind_key.substr(6)].set(binding.element.val());
+						binding.localData.set(bind_key.substr(6), binding.element.val());
 					}else{
 						binding.appData.set(bind_key, binding.element.val());
 					}
@@ -1376,10 +1374,7 @@ jCtrl.extend("Adapter", function() {
 		if(var_name){
 			if(var_name.indexOf("local.") == 0){
 				var_name = var_name.substr(6);
-				if(!binding.localData[var_name]){
-					binding.localData[var_name] = new Data();
-				}
-				binding.localData[var_name].set(var_value);
+				binding.localData.set(var_name, var_value);
 			}else{
 				binding.appData[var_name].set(var_value);
 			}
