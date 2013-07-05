@@ -12,8 +12,8 @@ var Data = function(data) {
 		gt : ">",
 		le : "<=",
 		ge : ">=",
-		eq : "==",
-		ne : "!=",
+		eq : "===",
+		ne : "!==",
 		div : "/",
 		mod : "%",
 		and : "&&",
@@ -104,8 +104,14 @@ var Data = function(data) {
 					//未计算过变量的值
 					if(!key_values.hasOwnProperty(full)){
 						self.keys.push(full);
-						var fk_exp_rs = /^local\.([^.]*)(?:\.(.*))?$/.exec(full);
-						if (fk_exp_rs && fk_list && fk_list[fk_exp_rs[1]]) {
+						
+						var fk_exp_rs;
+						//如果有外部变量，则判断表达式中是否有引用外部变量
+						if(fk_list){
+							fk_exp_rs = /^local\.([^.]*)(?:\.(.*))?$/.exec(full);
+						}
+						
+						if (fk_exp_rs && fk_list[fk_exp_rs[1]]) {
 							key_values[full] = fk_list[fk_exp_rs[1]].get(fk_exp_rs[2] || "");
 						} else {
 							key_values[full] = self.get(full == "this" ? "" : full);
@@ -1321,15 +1327,31 @@ jCtrl.extend("Adapter", function() {
 	
 	this.handle = function(){
 		var binding = this,
-		type=binding.element.attr("type");
+		type=binding.element.attr("type"),
+		bind_key;
 		
 		switch(type) {
 			case "text":
 				binding.bindTo("@value");
 				binding.element.val(binding.val());
+				
+				//如果绑定的表达式只有唯一变量，则将元素的值绑定到该变量，否则路过绑定步骤，
+				if(binding.appData.keys.length !=1 ){
+					break;
+				}
+				
+				bind_key = binding.appData.keys[0];
+				
+				//元素值更新时更新变量值
 				binding.element.change(function(){
-					binding.localData['x'].set(binding.element.val());
+
+					if(bind_key.indexOf("local.") == 0){
+						binding.localData[bind_key.substr(6)].set(binding.element.val());
+					}else{
+						binding.appData.set(bind_key, binding.element.val());
+					}
 				});
+				
 				break;
 		}
 
