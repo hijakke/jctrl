@@ -81,7 +81,7 @@ var Data = function(data) {
 	
 	elval = function(el, refer_data) {
 
-		var i = 0, values = [];
+		var i = 0, values = [], key_value;
 		
 		el = el.replace(rkey_replace, function(full) {
 			//过滤字符串
@@ -114,14 +114,18 @@ var Data = function(data) {
 				//未计算过值的变量
 				if(!key_values[variable_name].hasOwnProperty(full)){
 					
-					//如果有外部变量，则判断表达式中是否有引用外部变量
-					if(variable_name == "local" && refer_data){
-						key_values[variable_name][full] = refer_data.get(full.substr(6));
+					//引用外部变量
+					if(variable_name == "local"){
+						key_value = refer_data ? refer_data.get(full.substr(6)) : undefined;
 					} else {
-						key_values[variable_name][full] = self.get(full == "this" ? "" : full);
+						key_value = key_values[variable_name][full] = self.get(full == "this" ? "" : full);
 					}
+				}else{
+					//计算过变量的值
+					key_value = key_values[variable_name][full];
 				}
-				values.push(key_values[variable_name][full] === undefined ? "" : key_values[variable_name][full]);
+				
+				values.push(key_value === undefined ? "" : key_value);
 				
 				return "arguments[" + (i++) + "]";
 				
@@ -213,7 +217,8 @@ var Data = function(data) {
 	this.update = function(handler){
 		if(handler){
 			updater.push(handler);
-		}else{
+		}else{			
+			key_values ={};			
 			for(var i = 0; i < updater.length; i++){
 				updater[i].update();
 			}
@@ -789,7 +794,7 @@ Controller = function(app) {
 	
 	this.load = function($container, key){
 		var map = app.map(key),	
-		$wrapper = $("<span>"),		
+		$wrapper = $("<div>"),		
 		view_loaded_count = 0,
 		view_required_count = 0,
 		required_views = {},
@@ -1384,6 +1389,30 @@ jCtrl.extend("Adapter", function() {
 	};
 })
 
+//remove标签
+.extend("Tag", function(){
+	
+	this.name = "remove";
+		
+	this.handle = function(){
+		var binding = this,
+		var_name = binding.element.attr("val");
+		
+		if(var_name){
+			if(var_name.indexOf("local.") == 0){
+				var_name = var_name.substr(6);
+				delete binding.localData.get()[var_name];
+				binding.localData.update();
+			}else{
+				delete binding.appData.get()[var_name];
+				binding.appData.update();
+			}
+		}
+		
+		binding.element.remove();
+	};
+})
+
 //foreach标签
 .extend("Tag", function() {
 	
@@ -1418,14 +1447,14 @@ jCtrl.extend("Adapter", function() {
 		binding.contents = {};
 		binding.template = binding.element.contents();
 		
-		if(items && typeof items != "string"){
+		if(items !== undefined && typeof items != "string"){
 
 			binding.bindTo("@items");
 			
 			for(var i in items){				
 				append_new_content(i, items[i], new_element, binding);				
 			}
-		} else if(end) {
+		} else if(end !== undefined) {
 
 			binding.bindTo("@begin");
 			binding.bindTo("@end");
@@ -1434,8 +1463,11 @@ jCtrl.extend("Adapter", function() {
 				append_new_content(i, i, new_element, binding);				
 			}
 		}
-		
-		binding.element = new_element.contents();
+		if(new_element.contents().size() == 0){
+			binding.element = new_element;
+		}else{
+			binding.element = new_element.contents();
+		}
 
 	};
 	
@@ -1444,8 +1476,8 @@ jCtrl.extend("Adapter", function() {
 		begin = Number(binding.val("@begin")) || 0, 
 		end =  Number(binding.val("@end")), 
 		items =  binding.val("@items"),
-		new_element = $("<span>"),
-		placeholder = $("<span>");
+		new_element = $("<div>"),
+		placeholder = $("<div>");
 
 		binding.element.replaceWith(placeholder);
 		binding.element = placeholder;
@@ -1486,7 +1518,7 @@ jCtrl.extend("Adapter", function() {
 	this.name = "out";
 	
 	this.handle = function(){
-		this.element = $("<span></span>").text(this.val("@value"));
+		this.element = $("<span>").text(this.val("@value"));
 		this.bindTo("@value");
 	};
 	this.update = function(){
@@ -1503,7 +1535,7 @@ jCtrl.extend("Adapter", function() {
 	
 	this.handle = function(){
 		var binding = this,
-		placeholder = $("<span>"),
+		placeholder = $("<div>"),
 		contents = binding.element.children();
 		
 		binding.element = placeholder;
@@ -1518,7 +1550,7 @@ jCtrl.extend("Adapter", function() {
 			
 			//如果判断分支下内容为空，使用占位符代替
 			if(element.size() == 0){
-				element = $("<span>");
+				element = $("<div>");
 			}
 			
 			binding.bindExp += test;
@@ -1580,7 +1612,7 @@ jCtrl.extend("Adapter", function() {
 	
 	this.handle = function(){
 		var binding = this,	
-		placeholder = $("<span>");
+		placeholder = $("<div>");
 
 		binding.bindTo("@test");
 		binding.placeholder = placeholder;
