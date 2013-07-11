@@ -1373,7 +1373,7 @@ jCtrl.extend("Adapter", function() {
 		
 	this.handle = function(){
 		var binding = this,
-		var_name = binding.element.attr("val"),
+		var_name = binding.element.attr("var"),
 		var_value = binding.val("@value");
 		
 		if(var_name){
@@ -1396,7 +1396,7 @@ jCtrl.extend("Adapter", function() {
 		
 	this.handle = function(){
 		var binding = this,
-		var_name = binding.element.attr("val");
+		var_name = binding.element.attr("var");
 		
 		if(var_name){
 			if(var_name.indexOf("local.") == 0){
@@ -1438,12 +1438,14 @@ jCtrl.extend("Adapter", function() {
 	
 	this.handle = function() {
 		var binding = this,
-		begin = Number(binding.val("@begin")) || 0, 
-		end = Number(binding.val("@end")), 
+		begin = parseInt(binding.val("@begin")) || 0, 
+		end = parseInt(binding.val("@end")), 
 		items = binding.val("@items"),
+		step = parseInt(binding.val("@step")) || 1,
 		new_element = $("<div>");
-		
+
 		binding.attrVar = binding.element.attr("var");
+		binding.attrVarStatus = binding.element.attr("varStatus");
 		binding.contents = {};
 		binding.template = binding.element.contents();
 		
@@ -1459,7 +1461,7 @@ jCtrl.extend("Adapter", function() {
 			binding.bindTo("@begin");
 			binding.bindTo("@end");
 			
-			for ( var i = begin; i <= end; i++) {				
+			for ( var i = begin; i <= end; i += step) {				
 				append_new_content(i, i, new_element, binding);				
 			}
 		}
@@ -1473,8 +1475,9 @@ jCtrl.extend("Adapter", function() {
 	
 	this.update = function(){
 		var binding = this,
-		begin = Number(binding.val("@begin")) || 0, 
-		end =  Number(binding.val("@end")), 
+		begin = parseInt(binding.val("@begin")) || 0, 
+		end =  parseInt(binding.val("@end")), 
+		step = parseInt(binding.val("@step")) || 1,
 		items =  binding.val("@items"),
 		new_element = $("<div>"),
 		placeholder = $("<div>");
@@ -1494,7 +1497,7 @@ jCtrl.extend("Adapter", function() {
 			}
 		} else if(end) {
 			
-			for ( var i = begin; i <= end; i++) {
+			for ( var i = begin; i <= end; i += step) {
 				
 				if(!binding.contents.hasOwnProperty(i)){
 					append_new_content(i, i, new_element, binding);
@@ -1654,4 +1657,13 @@ jCtrl.extend("Adapter", function() {
 window.Log = LogFactory;
 window.Data = Data;
 window.jCtrl = jCtrl;
+
+$(document).ready(function(){
+	
+	jCtrl.create($("[app]").attr("app"), function(app) {
+		app.ctr.load($("[app]"), "home");
+	});
+	
+});
+
 })(window, jQuery);
