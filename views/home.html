@@ -1,12 +1,12 @@
 <div xmlns:j="http://jctrl.org/tags">
 
-	<j:set var="local.x" value="{1}" />
+	<j:set var="x" value="{1}" />
 
-	<input type="text" value="{local.x}" />
+	<input type="text" value="{x}" />
 
-	<j:out value="length: {list.length}, x: {local.x}"></j:out>
+	<j:out value="length: {list.length}, x: {x}"></j:out>
 
-	<j:foreach begin="{1}" end="{local.x}" step="{local.x /2}" var ="i">
+	<j:foreach begin="{1}" end="{x}" var ="i">
 		<div>
 			<j:out value="{i}" />
 		</div>

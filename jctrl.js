@@ -6,9 +6,11 @@ var Data = function(data) {
 	updater = [], 
 	pool, 
 	chain,
-	key_values = {},	
+	key_cache = {},
+	el_cache={},
+	on = true,
 	
-	alias_map = {
+	words_map = {
 		lt : "<",
 		gt : ">",
 		le : "<=",
@@ -89,7 +91,7 @@ var Data = function(data) {
 				return full;
 			} else {
 				
-				var alias = alias_map[full];
+				var alias = words_map[full];
 				if (alias) {
 					return alias;
 				}
@@ -105,24 +107,24 @@ var Data = function(data) {
 
 				var variable_name = /\w+/.exec(full)[0];
 
-				if(!key_values.hasOwnProperty(variable_name)){
-					key_values[variable_name] = {};
+				if(!key_cache.hasOwnProperty(variable_name)){
+					key_cache[variable_name] = {};
 				}
 
 				self.keys.push(full);
 				
 				//未计算过值的变量
-				if(!key_values[variable_name].hasOwnProperty(full)){
+				if(!key_cache[variable_name].hasOwnProperty(full)){
 					
 					//引用外部变量
 					if(variable_name == "local"){
 						key_value = refer_data ? refer_data.get(full.substr(6)) : undefined;
 					} else {
-						key_value = key_values[variable_name][full] = self.get(full == "this" ? "" : full);
+						key_value = key_cache[variable_name][full] = self.get(full == "this" ? "" : full);
 					}
 				}else{
 					//计算过变量的值
-					key_value = key_values[variable_name][full];
+					key_value = key_cache[variable_name][full];
 				}
 				
 				values.push(key_value === undefined ? "" : key_value);
@@ -194,19 +196,24 @@ var Data = function(data) {
 			if(typeof str != "string"){
 				return str;
 			}
+			
+			if(el_cache.hasOwnProperty(str)){
+				return el_cache[str];
+			}
+			
 			var proto_result, cur_exp;		
-			str = str.replace(rget_el_in_str, function(full, exp_str) {				
+			el_cache[str] = str.replace(rget_el_in_str, function(full, exp_str) {				
 				cur_exp = exp_str;				
 				
 				//如果字符串只包含el表达式，返回原型对象
 				if (str.length == full.length){
-					proto_result = elval(exp_str, refer_data);
-					return ;
+					 proto_result = elval(exp_str, refer_data);		
+					 return;			
 				}
 				return String(elval(exp_str, refer_data));
 			});
 			
-			return proto_result === undefined ? str : proto_result;
+			return proto_result === undefined ? el_cache[str] : el_cache[str] = proto_result;
 			
 		} catch (e) {
 			self.keys = [];
@@ -214,15 +221,20 @@ var Data = function(data) {
 		}
 	};
 	
-	this.update = function(handler){
-		if(handler){
-			updater.push(handler);
-		}else{			
-			key_values ={};			
-			for(var i = 0; i < updater.length; i++){
+	this.update = function() {
+		if (typeof arguments[0] == "boolean") {
+			on = arguments[0];
+			
+		} else if (arguments[0]) {
+			updater.push(arguments[0]);
+			
+		} else if (on) {			
+			key_cache = {};
+			for ( var i = 0; i < updater.length; i++) {
 				updater[i].update();
-			}
+			}			
 		}
+		el_cache={};
 	};	
 },
 
@@ -647,42 +659,94 @@ View = function($view, $app, app) {
 	
 },
 
-Tag = function() {
-	this.ns = "http://jctrl.org/tags";
-	this.parseChild = true;
-
-	var abstract_method = function(){
-		throw new Error("Unimplemented method");
-	},
+Binding = function($element, app, app_data, local_data, fn){
+	var original = $element,
+	attr_exp = {},
+	update_fn = fn,
+	last_val,
+	last_element;
 	
-	get_bind_value = function(){
+	this.bindExp = "";
+	this.element = $element;
+	this.appData = app_data;
+	this.localData = local_data;
+	this.app = app;
+	
+	this.bindTo = function(el){
+		if(el.indexOf("@") == 0){
+			if(attr_exp.hasOwnProperty(el)){
+				this.bindExp += attr_exp[el]; 
+			}else{
+				this.bindExp += attr_exp[el] = original.attr(el.substr(1));					
+			} 
+		}else{
+			this.bindExp += el;
+		}
+	};
+	
+	this.val = function(){
 		if(arguments.length==0){
 			return this.appData.el(this.bindExp, this.localData); 
 		}else{
 			var el = arguments[0];
 			if(el && el.indexOf("@") == 0){
 								
-				if(this.attrExp.hasOwnProperty(el)){
-					el = this.attrExp[el];
+				if(attr_exp.hasOwnProperty(el)){
+					el = attr_exp[el];
 				}else{
-					el = this.attrExp[el] = this.original.attr(el.substr(1));					
+					el = attr_exp[el] = original.attr(el.substr(1));					
 				} 
 			}
 			return this.appData.el(el, this.localData);
 		}		
-	},
+	};
 	
-	bind_to_value = function(el){
-		if(el.indexOf("@") == 0){
-			if(this.attrExp.hasOwnProperty(el)){
-				this.bindExp += this.attrExp[el]; 
-			}else{
-				this.bindExp += this.attrExp[el] = this.original.attr(el.substr(1));					
-			} 
-		}else{
-			this.bindExp += el;
+	this.update = function(){
+		var cur_val = this.val();
+		last_element = this.element;
+		if(update_fn && cur_val !== last_val){
+			
+			update_fn.call(this);
+			
+			if(last_element !== binding.element && binding.element && last_element[0] !== binding.element[0]){
+				last_element.replaceWith(binding.element);
+			}
+		}
+		
+		last_val = cur_val;
+	};
+	
+	this.bind = function(){
+		
+		var fk_exp = /^local\.([^.]*)(?:\.(.*))?$/, fk_exp_rs,
+		
+		has_app_data_flag = false,
+		has_local_data_flag = false;
+		
+		this.appData.el(this.bindExp, this.localData);
+		
+		for ( var i = 0; i < this.appData.keys.length; i++) {
+			fk_exp_rs = fk_exp.exec(this.appData.keys[i]);
+			if(fk_exp_rs){
+				has_local_data_flag = true;
+			}
+			else{
+				has_app_data_flag = true;
+			}
+		}
+		
+		if(has_local_data_flag && update_fn){				
+			this.localData.update(this);
+		}
+		if(has_app_data_flag && update_fn){
+			this.appData.update(this);
 		}
 	};
+},
+
+Tag = function() {
+	this.ns = "http://jctrl.org/tags";
+	this.parseChild = true;
 	
 	//匹配标签命名空间并截取标签名
 	this.matchNS = function(name){
@@ -706,48 +770,11 @@ Tag = function() {
 		return this.matchTag(this.matchNS(name));
 	};
 	
-	this.bind = function(binding){
-		
-		var fk_exp = /^local\.([^.]*)(?:\.(.*))?$/, fk_exp_rs,
-		
-		has_app_data_flag = false,
-		has_local_data_flag = false;
-		
-		binding.appData.el(binding.bindExp);
-		
-		for ( var i = 0; i < binding.appData.keys.length; i++) {
-			fk_exp_rs = fk_exp.exec(binding.appData.keys[i]);
-			if(fk_exp_rs){
-				has_local_data_flag = true;
-			}
-			else{
-				has_app_data_flag = true;
-			}
-		}
-		
-		if(has_local_data_flag && binding.update != abstract_method){				
-			binding.localData.update(binding);
-		}
-		if(has_app_data_flag && binding.update != abstract_method){
-			binding.appData.update(binding);
-		}
-	};
-	
 	this.parse = function($element, app, app_data, local_data) {
 		
 		var self = this,
-		binding ={
-			original : $element,
-			element : $element,
-			app : app,
-			attrExp : {},
-			appData : app_data,
-			localData : local_data,
-			bindExp : "",
-			update : self.update,
-			val : get_bind_value,
-			bindTo : bind_to_value
-		},
+		
+		binding = new Binding($element, app, app_data, local_data, self.update),
 		
 		rt = self.handle.call(binding);
 		
@@ -755,9 +782,7 @@ Tag = function() {
 			binding.element = typeof rt == "string" ? $("<div>" + rt + "</div>").contents()	: rt;
 		}
 		
-		if(binding.bindExp){
-			self.bind(binding);
-		}
+		binding.bind();
 		
 		if($element !== binding.element && binding.element && $element[0] !== binding.element[0]){
 			$element.replaceWith(binding.element);
@@ -766,8 +791,6 @@ Tag = function() {
 		return binding.element;
 		
 	};
-	
-	this.update = abstract_method;
 },
 
 Controller = function(app) {
@@ -1020,6 +1043,17 @@ jCtrl = new function (){
 		
 		abst.instances.push(new impl);
 		
+		return this;
+	};
+	
+	this.init = function(){
+		$(document).ready(function(){
+			
+			jCtrl.create($("[app]").attr("app"), function(app) {
+				app.ctr.load($("[app]"), "home");
+			});
+			
+		});
 		return this;
 	};
 	
@@ -1381,7 +1415,7 @@ jCtrl.extend("Adapter", function() {
 				var_name = var_name.substr(6);
 				binding.localData.set(var_name, var_value);
 			}else{
-				binding.appData[var_name].set(var_value);
+				binding.appData.set(var_name, var_value);
 			}
 		}
 		
@@ -1656,14 +1690,6 @@ jCtrl.extend("Adapter", function() {
 
 window.Log = LogFactory;
 window.Data = Data;
-window.jCtrl = jCtrl;
-
-$(document).ready(function(){
-	
-	jCtrl.create($("[app]").attr("app"), function(app) {
-		app.ctr.load($("[app]"), "home");
-	});
-	
-});
+window.jCtrl = jCtrl.init();
 
 })(window, jQuery);
