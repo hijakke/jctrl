@@ -1,6 +1,6 @@
 <div xmlns:j="http://jctrl.org/tags">
 
-	<j:set var="x" value="{1}" />
+	<j:set var="x" value="{12}" />
 
 	<input type="text" value="{x}" />
 
@@ -13,5 +13,9 @@
 	</j:foreach>
 
 	<input type="button" value="BIND" />
+	
+	<j:script>
+		alert(appData.get("x"));
+	</j:script>
 
 </div>

@@ -577,8 +577,8 @@ View = function($view, $app, app) {
 		}
 		
 		connector.load(attributes.url, Adapter.get(viewType)).ready(function(html){
-			attributes.html = "<div>" + html[0] +"</div>"; 
-			attributes.dom = $(attributes.html);
+			attributes.html = html[0]; 
+			attributes.dom = $("<div>").html(html[0]);
 		});
 		
 		connector.load(scripts).ready(function(texts){
@@ -708,9 +708,9 @@ Binding = function($element, app, app_data, local_data, fn){
 			
 			update_fn.call(this);
 			
-			if(last_element !== binding.element && binding.element && last_element[0] !== binding.element[0]){
-				last_element.replaceWith(binding.element);
-			}
+//			if(last_element !== this.element && this.element && last_element[0] !== this.element[0]){
+//				last_element.replaceWith(this.element);
+//			}
 		}
 		
 		last_val = cur_val;
@@ -1359,6 +1359,21 @@ jCtrl.extend("Adapter", function() {
 
 .extend("Tag", function(){
 	
+	this.name="script";
+	
+	this.handle = function(){
+		
+		var script_head = "var localData = arguments[0],appData = arguments[1];";
+		
+		(new Function(script_head + this.element.text())).call(window, this.localData, this.appData);
+		
+		this.element.remove();
+		
+	};
+})
+
+.extend("Tag", function(){
+	
 	this.ns = "";
 	this.name = "input";
 	
@@ -1689,6 +1704,7 @@ jCtrl.extend("Adapter", function() {
 });
 
 window.Log = LogFactory;
+window.App = App;
 window.Data = Data;
 window.jCtrl = jCtrl.init();
 
