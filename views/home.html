@@ -3,19 +3,16 @@
 	<j:set var="x" value="{12}" />
 
 	<input type="text" value="{x}" />
+	<input type="text" value="{x}" />
 
 	<j:out value="length: {list.length}, x: {x}"></j:out>
 
-	<j:foreach begin="{1}" end="{x}" var ="i">
+	<j:foreach begin="{x-2}" end="{x}" var ="i">
 		<div>
 			<j:out value="{i}" />
 		</div>
 	</j:foreach>
 
 	<input type="button" value="BIND" />
-	
-	<j:script>
-		alert(appData.get("x"));
-	</j:script>
 
 </div>

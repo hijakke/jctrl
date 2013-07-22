@@ -198,11 +198,12 @@ var Data = function(data) {
 			}
 			
 			if(el_cache.hasOwnProperty(str)){
-				return el_cache[str];
+				self.keys = el_cache[str].keys;
+				return el_cache[str].val;
 			}
 			
-			var proto_result, cur_exp;		
-			el_cache[str] = str.replace(rget_el_in_str, function(full, exp_str) {				
+			var proto_result,out_value, cur_exp;		
+			out_value = str.replace(rget_el_in_str, function(full, exp_str) {				
 				cur_exp = exp_str;				
 				
 				//如果字符串只包含el表达式，返回原型对象
@@ -213,7 +214,14 @@ var Data = function(data) {
 				return String(elval(exp_str, refer_data));
 			});
 			
-			return proto_result === undefined ? el_cache[str] : el_cache[str] = proto_result;
+			out_value = proto_result === undefined ? out_value : proto_result;
+
+			el_cache[str] = {
+				keys : self.keys,
+				val : out_value
+			};
+			
+			return el_cache[str].val;
 			
 		} catch (e) {
 			self.keys = [];
