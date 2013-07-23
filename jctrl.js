@@ -33,10 +33,10 @@ var Data = function(data) {
 	// "(?:\\"|[^"])*" 过滤双引号字符串
 	// \b[_$a-zA-Z][_$\w]*(?:\.[_$\w]*|\[[^\[\]]*\])* 获取变量名，计算变量值加入参数列表
 	// (?:\s*\()? 过滤函数	
-	rkey_replace = /'(?:\\'|[^'])*'|"(?:\\"|[^"])*"|\b[_$a-zA-Z][_$\w]*(?:\.[_$\w]*|\[[^\[\]]*\])*(?:\s*\()?/g,
+	rget_key_in_el = /'(?:\\'|[^'])*'|"(?:\\"|[^"])*"|\b[_$a-zA-Z][_$\w]*(?:\.[_$\w]*|\[[^\[\]]*\])*(?:\s*\()?/g,
 	
 	//处理中括号运算符，取出其中变量并计算其值
-	rkey_replace_operator = /\[(?!['"\d])([^\[\]])*\]/g,
+	rget_operator_in_key = /\[(?!['"\d])([^\[\]])*\]/g,
 	
 	//截取字符串中的el表达式
 	rget_el_in_str = /[$#]?{((?:'[^']*'|"[^']*"|[^{}]+)+)}/g,
@@ -85,7 +85,7 @@ var Data = function(data) {
 
 		var i = 0, values = [], key_value;
 		
-		el = el.replace(rkey_replace, function(full) {
+		el = el.replace(rget_key_in_el, function(full) {
 			//过滤字符串
 			if (full.charAt(0) === "'" || full.charAt(0) === '"' ) {
 				return full;
@@ -101,7 +101,7 @@ var Data = function(data) {
 				}
 				
 				//处理中括号运算符
-				full = full.replace(rkey_replace_operator, function(_, selector){
+				full = full.replace(rget_operator_in_key, function(_, selector){
 					return "['"+ self.get(selector) +"']";			
 				});
 
@@ -229,6 +229,28 @@ var Data = function(data) {
 		}
 	};
 	
+	this.keys = function(el){
+		var el_group,keys_group,out_keys=[],last_el_group;
+		while((el_group=rget_el_in_str.exec(el)) !== null){
+			
+			while((keys_group =rget_key_in_el.exec( el_group[1])) !== null){
+				if (keys_group[0].charAt(0) === "'" || keys_group[0] === '"' || words_map.hasOwnProperty(keys_group[0])) {
+					continue;
+				} 
+				out_keys.push(keys_group[0]);
+			}
+			last_el_group = el_group;
+		}
+		
+		if(out_keys[0] == $.trim(last_el_group[1])){
+			out_keys.complex = false;
+		}else{
+			out_keys.complex = true;
+		}
+		
+		return out_keys;
+	};
+	
 	this.update = function() {
 		if (typeof arguments[0] == "boolean") {
 			on = arguments[0];
@@ -295,16 +317,17 @@ Connector = function() {
 				}
 			}
 			if(task_list.length == 0){
-				//try{
+				try{
 					for(var i =0;i<clear_fns.length;i++){
 						clear_fns[i]();
 					}
-				//
-				//finally{
+				} catch(e){
+					throw e;
+				} finally{
 					clear_fns=[];
 					error_fns=[];
 					progress_fns = [];
-				//}
+				}
 			}
 		}
 	},
