@@ -110,8 +110,6 @@ var Data = function(data) {
 				if(!key_cache.hasOwnProperty(variable_name)){
 					key_cache[variable_name] = {};
 				}
-
-				self.keys.push(full);
 				
 				//未计算过值的变量
 				if(!key_cache[variable_name].hasOwnProperty(full)){
@@ -144,9 +142,6 @@ var Data = function(data) {
 	}else{
 		pool = {json : data === undefined ? {} : data};
 	}
-	
-	//计算el表达式的值后，表达式中的变量名会保存在keys数组中
-	this.keys = [];
 	
 	this.get = function(){
 		if(arguments.length == 0 || !arguments[0]){
@@ -191,15 +186,12 @@ var Data = function(data) {
 	//计算字符串中el表达式的值
 	this.el = function(str, refer_data) {
 		try {
-			self.keys = [];
-			
 			if(typeof str != "string"){
 				return str;
 			}
 			
 			if(el_cache.hasOwnProperty(str)){
-				self.keys = el_cache[str].keys;
-				return el_cache[str].val;
+				return el_cache[str];
 			}
 			
 			var proto_result,out_value, cur_exp;		
@@ -216,19 +208,16 @@ var Data = function(data) {
 			
 			out_value = proto_result === undefined ? out_value : proto_result;
 
-			el_cache[str] = {
-				keys : self.keys,
-				val : out_value
-			};
+			el_cache[str] = out_value ;
 			
-			return el_cache[str].val;
+			return el_cache[str];
 			
 		} catch (e) {
-			self.keys = [];
 			throw new Error("Unrecognized expression: " + cur_exp);
 		}
 	};
 	
+	//计算el表达式的值后，表达式中的变量名会保存在keys数组中
 	this.keys = function(el){
 		var el_group,keys_group,out_keys=[],last_el_group;
 		while((el_group=rget_el_in_str.exec(el)) !== null){
@@ -242,7 +231,7 @@ var Data = function(data) {
 			last_el_group = el_group;
 		}
 		
-		if(out_keys[0] == $.trim(last_el_group[1])){
+		if(!last_el_group || out_keys[0] == $.trim(last_el_group[1])){
 			out_keys.complex = false;
 		}else{
 			out_keys.complex = true;
@@ -694,8 +683,8 @@ Binding = function($element, app, app_data, local_data, fn){
 	var original = $element,
 	attr_exp = {},
 	update_fn = fn,
-	last_val,
-	last_element;
+	last_val/*,
+	last_element*/;
 	
 	this.bindExp = "";
 	this.element = $element;
@@ -749,16 +738,12 @@ Binding = function($element, app, app_data, local_data, fn){
 	
 	this.bind = function(){
 		
-		var fk_exp = /^local\.([^.]*)(?:\.(.*))?$/, fk_exp_rs,
+		var has_app_data_flag = false,
+		has_local_data_flag = false,		
+		keys = this.appData.keys(this.bindExp);
 		
-		has_app_data_flag = false,
-		has_local_data_flag = false;
-		
-		this.appData.el(this.bindExp, this.localData);
-		
-		for ( var i = 0; i < this.appData.keys.length; i++) {
-			fk_exp_rs = fk_exp.exec(this.appData.keys[i]);
-			if(fk_exp_rs){
+		for ( var i = 0; i < keys.length; i++) {
+			if(keys[i].indexOf("local.") == 0){
 				has_local_data_flag = true;
 			}
 			else{
@@ -810,7 +795,7 @@ Tag = function() {
 		rt = self.handle.call(binding);
 		
 		if(rt){
-			binding.element = typeof rt == "string" ? $("<div>" + rt + "</div>").contents()	: rt;
+			binding.element = typeof rt == "string" ? $(document.createTextNode(rt)) : rt;
 		}
 		
 		binding.bind();
@@ -1417,13 +1402,14 @@ jCtrl.extend("Adapter", function() {
 			case "text":
 				binding.bindTo("@value");
 				binding.element.val(binding.val());
+				var keys = binding.appData.keys(binding.bindExp);
 				
 				//如果绑定的表达式只有唯一变量，则将元素的值绑定到该变量，否则路过绑定步骤，
-				if(binding.appData.keys.length !=1 ){
+				if(keys.length !=1 || keys.complex){
 					break;
 				}
 				
-				bind_key = binding.appData.keys[0];
+				bind_key = keys[0];
 				
 				//元素值更新时更新变量值
 				binding.element.change(function(){
