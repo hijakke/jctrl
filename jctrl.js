@@ -29,22 +29,33 @@ var Data = function(data) {
 	
 	
 	// 将el表达式转换成js表达式 
-	// '(?:\\'|[^'])*' 过渡单引号字符串 
-	// "(?:\\"|[^"])*" 过滤双引号字符串
+	// '[^']*'|"[^"]*" 过渡字符串 
 	// \b[_$a-zA-Z][_$\w]*(?:\.[_$\w]*|\[[^\[\]]*\])* 获取变量名，计算变量值加入参数列表
 	// (?:\s*\()? 过滤函数	
-	rget_key_in_el = /'(?:\\'|[^'])*'|"(?:\\"|[^"])*"|\b[_$a-zA-Z][_$\w]*(?:\.[_$\w]*|\[[^\[\]]*\])*(?:\s*\()?/g,
+	rget_key_in_el = /'[^']*'|"[^"]*"|\b[_$a-zA-Z][_$\w]*(?:\.[_$\w]*|\[[^\[\]]*\])*(?:\s*\()?/g,
 	
 	//处理中括号运算符，取出其中变量并计算其值
 	rget_operator_in_key = /\[(?!['"\d])([^\[\]])*\]/g,
 	
 	//截取字符串中的el表达式
 	rget_el_in_str = /[$#]?{((?:'[^']*'|"[^']*"|[^{}]+)+)}/g,
+	
+	rget_var_in_brackets = /\[\s*['"]([^\]]+)['"]\s*\]/,
+	
+	rget_w = /\w+/,
 	 
 	val = function() {
 		try {
-			var variable_name = /\w+/.exec(arguments[0])[0], 
-			key = "data.json." + arguments[0];
+			
+			var variable_name, key;
+			
+			if(arguments[0].charAt(0)=='['){
+				variable_name = rget_var_in_brackets.exec(arguments[0])[1];
+				key = "data.json" + arguments[0];
+			}else {
+				variable_name = /\w+/.exec(arguments[0])[0];
+				key = (arguments[0].charAt(0) == '.' ? "data.json" : "data.json.") + arguments[0];
+			}
 			
 			//当前和上级作用域中都不存在该属性时
 			//进行写操作时对未定义的属性先进行定义,进行读操作时返回未定义
@@ -116,9 +127,9 @@ var Data = function(data) {
 					
 					//引用外部变量
 					if(variable_name == "local"){
-						key_value = refer_data ? refer_data.get(full.substr(6)) : undefined;
-					} else {
-						key_value = key_cache[variable_name][full] = self.get(full == "this" ? "" : full);
+						key_value = refer_data ? refer_data.get(full.substr(5)) : undefined;
+					} else {						
+						key_value = key_cache[variable_name][full] = self.get(variable_name == "this" ? full.substr(4) : full);
 					}
 				}else{
 					//计算过变量的值
@@ -218,26 +229,38 @@ var Data = function(data) {
 	};
 	
 	//计算el表达式的值后，表达式中的变量名会保存在keys数组中
-	this.keys = function(el){
-		var el_group,keys_group,out_keys=[],last_el_group;
+	this.check = function(el){
+		var el_group,keys_group,last_el_group,last_keys_group,
+		
+		check_result ={scope : 0};
+		
 		while((el_group=rget_el_in_str.exec(el)) !== null){
 			
 			while((keys_group =rget_key_in_el.exec( el_group[1])) !== null){
 				if (keys_group[0].charAt(0) === "'" || keys_group[0] === '"' || words_map.hasOwnProperty(keys_group[0])) {
 					continue;
 				} 
-				out_keys.push(keys_group[0]);
+				var var_name = rget_w.exec(keys_group[0])[0];
+				if(var_name == "local"){
+					check_result.scope = check_result.scope | 1;
+				}else{
+					check_result.scope = check_result.scope | 2;
+				}
+				last_keys_group = keys_group;
 			}
 			last_el_group = el_group;
 		}
 		
-		if(!last_el_group || out_keys[0] == $.trim(last_el_group[1])){
-			out_keys.complex = false;
-		}else{
-			out_keys.complex = true;
+		if(last_el_group && last_keys_group[0] == $.trim(last_el_group[1])){
+			check_result.avaliable = last_keys_group[0];
+			if(check_result.scope == 1){
+				
+				check_result.avaliable = "this" + check_result.avaliable.substr(5);
+				
+			}
 		}
 		
-		return out_keys;
+		return check_result;
 	};
 	
 	this.update = function() {
@@ -728,9 +751,9 @@ Binding = function($element, app, app_data, local_data, fn){
 			
 			update_fn.call(this);
 			
-//			if(last_element !== this.element && this.element && last_element[0] !== this.element[0]){
+			if(last_element !== this.element && this.element && last_element[0] !== this.element[0]){
 //				last_element.replaceWith(this.element);
-//			}
+			}
 		}
 		
 		last_val = cur_val;
@@ -738,23 +761,12 @@ Binding = function($element, app, app_data, local_data, fn){
 	
 	this.bind = function(){
 		
-		var has_app_data_flag = false,
-		has_local_data_flag = false,		
-		keys = this.appData.keys(this.bindExp);
+		var check = this.appData.check(this.bindExp);
 		
-		for ( var i = 0; i < keys.length; i++) {
-			if(keys[i].indexOf("local.") == 0){
-				has_local_data_flag = true;
-			}
-			else{
-				has_app_data_flag = true;
-			}
-		}
-		
-		if(has_local_data_flag && update_fn){				
+		if(check.scope | 1 == 1 && update_fn){				
 			this.localData.update(this);
 		}
-		if(has_app_data_flag && update_fn){
+		if(check.scope | 2 == 2 && update_fn){
 			this.appData.update(this);
 		}
 	};
@@ -1395,29 +1407,26 @@ jCtrl.extend("Adapter", function() {
 	
 	this.handle = function(){
 		var binding = this,
-		type=binding.element.attr("type"),
-		bind_key;
+		type=binding.element.attr("type");
 		
 		switch(type) {
 			case "text":
 				binding.bindTo("@value");
 				binding.element.val(binding.val());
-				var keys = binding.appData.keys(binding.bindExp);
+				var check = binding.appData.check(binding.bindExp);
 				
 				//如果绑定的表达式只有唯一变量，则将元素的值绑定到该变量，否则路过绑定步骤，
-				if(keys.length !=1 || keys.complex){
+				if(!check.avaliable){
 					break;
 				}
-				
-				bind_key = keys[0];
 				
 				//元素值更新时更新变量值
 				binding.element.change(function(){
 
-					if(bind_key.indexOf("local.") == 0){
-						binding.localData.set(bind_key.substr(6), binding.element.val());
+					if(check.avaliable.indexOf("local.") == 0){
+						binding.localData.set(check.avaliable.substr(6), binding.element.val());
 					}else{
-						binding.appData.set(bind_key, binding.element.val());
+						binding.appData.set(check.avaliable, binding.element.val());
 					}
 				});
 				
