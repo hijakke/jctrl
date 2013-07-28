@@ -1,9 +1,10 @@
 <div xmlns:j="http://jctrl.org/tags">
 
 	<j:set var="x" value="{12}" />
+	<j:set var="local.x" value="{13}" />
 
 	<input type="text" value="{x}" />
-	<input type="text" value="{x}" />
+	<input type="text" value="{local.x}" />
 
 	<j:out value="length: {list.length}, x: {x}"></j:out>
 

@@ -27,12 +27,29 @@ var Data = function(data) {
 		"undefined" : "undefined"
 	},
 	
+	fns = {
+		substr : function(str, begin, len){
+			return String.prototype.substr.call(str, begin, len);
+		},
+		startWith : function(full, start){
+			return full.indexOf(start) == 0;
+		},
+		join : function(array , separator){
+			return Array.prototype.join.call(array,separator);
+		},
+		trim : function(str){
+			return $.trim(str);
+		},
+		hayagu : function(){
+			throw 1;
+		}
+	},
 	
 	// 将el表达式转换成js表达式 
 	// '[^']*'|"[^"]*" 过渡字符串 
 	// \b[_$a-zA-Z][_$\w]*(?:\.[_$\w]*|\[[^\[\]]*\])* 获取变量名，计算变量值加入参数列表
 	// (?:\s*\()? 过滤函数	
-	rget_key_in_el = /'[^']*'|"[^"]*"|\b[_$a-zA-Z][_$\w]*(?:\.[_$\w]*|\[[^\[\]]*\])*(?:\s*\()?/g,
+	rget_key_in_el = /'[^']*'|"[^"]*"|[_$a-zA-Z][_$\w]*(?:\.[_$\w]*|\[[^\[\]]*\])?(?:\s*\()?/g,
 	
 	//处理中括号运算符，取出其中变量并计算其值
 	rget_operator_in_key = /\[(?!['"\d])([^\[\]])*\]/g,
@@ -53,7 +70,7 @@ var Data = function(data) {
 				variable_name = rget_var_in_brackets.exec(arguments[0])[1];
 				key = "data.json" + arguments[0];
 			}else {
-				variable_name = /\w+/.exec(arguments[0])[0];
+				variable_name = rget_w.exec(arguments[0])[0];
 				key = (arguments[0].charAt(0) == '.' ? "data.json" : "data.json.") + arguments[0];
 			}
 			
@@ -94,7 +111,9 @@ var Data = function(data) {
 	
 	elval = function(el, refer_data) {
 
-		var i = 0, values = [], key_value;
+		var i = 1, values = [], key_value;
+		
+		values.push(fns);
 		
 		el = el.replace(rget_key_in_el, function(full) {
 			//过滤字符串
@@ -108,15 +127,16 @@ var Data = function(data) {
 				}
 				//过滤函数
 				if (full.charAt(full.length-1) =="(") {
-					return "(";
+					
+					return "arguments[0]['" + full.substr(0,full.length-1) + "'](";
 				}
 				
 				//处理中括号运算符
 				full = full.replace(rget_operator_in_key, function(_, selector){
-					return "['"+ self.get(selector) +"']";			
+					return "['"+ val(selector) +"']";			
 				});
 
-				var variable_name = /\w+/.exec(full)[0];
+				var variable_name = rget_w.exec(full)[0];
 
 				if(!key_cache.hasOwnProperty(variable_name)){
 					key_cache[variable_name] = {};
@@ -129,7 +149,7 @@ var Data = function(data) {
 					if(variable_name == "local"){
 						key_value = refer_data ? refer_data.get(full.substr(5)) : undefined;
 					} else {						
-						key_value = key_cache[variable_name][full] = self.get(variable_name == "this" ? full.substr(4) : full);
+						key_value = key_cache[variable_name][full] = val(variable_name == "this" ? full.substr(4) : full);
 					}
 				}else{
 					//计算过变量的值
@@ -155,7 +175,7 @@ var Data = function(data) {
 	}
 	
 	this.get = function(){
-		if(arguments.length == 0 || !arguments[0]){
+		if(arguments.length == 0 || arguments[0] === undefined){
 			return pool.json;
 		}else{
 			return val(arguments[0]);
@@ -185,7 +205,7 @@ var Data = function(data) {
 
 	this.push = function(key, obj){
 		
-		var push_to = this.get(key);
+		var push_to = val(key);
 		if(push_to && push_to.push){
 			push_to.push(obj);
 		}
@@ -255,7 +275,7 @@ var Data = function(data) {
 			check_result.avaliable = last_keys_group[0];
 			if(check_result.scope == 1){
 				
-				check_result.avaliable = "this" + check_result.avaliable.substr(5);
+				check_result.avaliable =  check_result.avaliable.substr(5);
 				
 			}
 		}
@@ -763,10 +783,10 @@ Binding = function($element, app, app_data, local_data, fn){
 		
 		var check = this.appData.check(this.bindExp);
 		
-		if(check.scope | 1 == 1 && update_fn){				
+		if(check.scope & 1 && update_fn){				
 			this.localData.update(this);
 		}
-		if(check.scope | 2 == 2 && update_fn){
+		if(check.scope & 2 && update_fn){
 			this.appData.update(this);
 		}
 	};
@@ -807,7 +827,11 @@ Tag = function() {
 		rt = self.handle.call(binding);
 		
 		if(rt){
-			binding.element = typeof rt == "string" ? $(document.createTextNode(rt)) : rt;
+			binding.element = rt;
+		}
+		
+		if(typeof binding.element != "object" ){
+			binding.element = $(document.createTextNode(binding.element));
 		}
 		
 		binding.bind();
@@ -1058,6 +1082,12 @@ LogFactory = (function(){
 jCtrl = new function (){
 	
 	this.extend = function(abst, impl) {
+		
+		if(abst =="Function"){
+			Data.instances.push(impl);
+			return;
+		}
+		
 		abst = {Adapter:Adapter, Tag:Tag}[abst];
 		if (!abst) {
 			throw new Error("superClass not defined");
@@ -1276,6 +1306,9 @@ $.extend(Tag, {
 	}
 });
 
+$.extend(Data,{
+	instances : []
+});
 
 //TODO: 扩展Adapter对象 
 $.extend(Adapter,{
@@ -1423,8 +1456,8 @@ jCtrl.extend("Adapter", function() {
 				//元素值更新时更新变量值
 				binding.element.change(function(){
 
-					if(check.avaliable.indexOf("local.") == 0){
-						binding.localData.set(check.avaliable.substr(6), binding.element.val());
+					if(check.scope == 1){
+						binding.localData.set(check.avaliable, binding.element.val());
 					}else{
 						binding.appData.set(check.avaliable, binding.element.val());
 					}
@@ -1448,15 +1481,14 @@ jCtrl.extend("Adapter", function() {
 		
 	this.handle = function(){
 		var binding = this,
-		var_name = binding.element.attr("var"),
+		check = binding.appData.check("{" + binding.element.attr("var") + "}"),
 		var_value = binding.val("@value");
 		
-		if(var_name){
-			if(var_name.indexOf("local.") == 0){
-				var_name = var_name.substr(6);
-				binding.localData.set(var_name, var_value);
+		if(check.avaliable){
+			if(check.scope == 1){
+				binding.localData.set(check.avaliable, var_value);
 			}else{
-				binding.appData.set(var_name, var_value);
+				binding.appData.set(check.avaliable, var_value);
 			}
 		}
 		
@@ -1471,16 +1503,13 @@ jCtrl.extend("Adapter", function() {
 		
 	this.handle = function(){
 		var binding = this,
-		var_name = binding.element.attr("var");
+		check = binding.appData.check("{" + binding.element.attr("var") + "}");
 		
-		if(var_name){
-			if(var_name.indexOf("local.") == 0){
-				var_name = var_name.substr(6);
-				delete binding.localData.get()[var_name];
-				binding.localData.update();
+		if(check.avaliable){
+			if(check.scope == 1){
+				binding.localData.set(check.avaliable, undefined);
 			}else{
-				delete binding.appData.get()[var_name];
-				binding.appData.update();
+				binding.appData.set(check.avaliable, undefined);
 			}
 		}
 		
@@ -1596,7 +1625,8 @@ jCtrl.extend("Adapter", function() {
 	this.name = "out";
 	
 	this.handle = function(){
-		this.element = $("<span>").text(this.val("@value"));
+		//this.element = $("<span>").text(this.val("@value"));
+		this.element = this.val("@value");
 		this.bindTo("@value");
 	};
 	this.update = function(){
