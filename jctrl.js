@@ -27,36 +27,19 @@ var Data = function(data) {
 		"undefined" : "undefined"
 	},
 	
-	fns = {
-		substr : function(str, begin, len){
-			return String.prototype.substr.call(str, begin, len);
-		},
-		startWith : function(full, start){
-			return full.indexOf(start) == 0;
-		},
-		join : function(array , separator){
-			return Array.prototype.join.call(array,separator);
-		},
-		trim : function(str){
-			return $.trim(str);
-		},
-		hayagu : function(){
-			throw 1;
-		}
-	},
-	
 	// 将el表达式转换成js表达式 
-	// '[^']*'|"[^"]*" 过渡字符串 
-	// \b[_$a-zA-Z][_$\w]*(?:\.[_$\w]*|\[[^\[\]]*\])* 获取变量名，计算变量值加入参数列表
-	// (?:\s*\()? 过滤函数	
-	rget_key_in_el = /'[^']*'|"[^"]*"|[_$a-zA-Z][_$\w]*(?:\.[_$\w]*|\[[^\[\]]*\])?(?:\s*\()?/g,
+	// '[^']*'|"[^"]*" 过滤字符串 
+	// [_$a-zA-Z][_$\w]*(?:\.[_$\w]*|\[[^\[\]]*\])* 匹配变量名，计算变量值加入参数列表
+	// (?:\s*\()? 匹配函数
+	rget_key_in_el = /'[^']*'|"[^"]*"|[_$a-zA-Z][_$\w]*(?:\.[_$\w]*|\[[^\[\]]*\])*(?:\s*\()?/g,
 	
-	//处理中括号运算符，取出其中变量并计算其值
+	// 匹配中括号运算符，取出其中变量并计算其值
 	rget_operator_in_key = /\[(?!['"\d])([^\[\]])*\]/g,
 	
-	//截取字符串中的el表达式
+	// 匹配字符串中的el表达式
 	rget_el_in_str = /[$#]?{((?:'[^']*'|"[^']*"|[^{}]+)+)}/g,
 	
+	// 匹配中括号运算符中字符串字段名
 	rget_var_in_brackets = /\[\s*['"]([^\]]+)['"]\s*\]/,
 	
 	rget_w = /\w+/,
@@ -111,9 +94,7 @@ var Data = function(data) {
 	
 	elval = function(el, refer_data) {
 
-		var i = 1, values = [], key_value;
-		
-		values.push(fns);
+		var i = 0, values = [], key_value;
 		
 		el = el.replace(rget_key_in_el, function(full) {
 			//过滤字符串
@@ -128,12 +109,12 @@ var Data = function(data) {
 				//过滤函数
 				if (full.charAt(full.length-1) =="(") {
 					
-					return "arguments[0]['" + full.substr(0,full.length-1) + "'](";
+					return "arguments[1]['" + full.substr(0,full.length-1) + "'](";
 				}
 				
 				//处理中括号运算符
 				full = full.replace(rget_operator_in_key, function(_, selector){
-					return "['"+ val(selector) +"']";			
+					return "['"+ self.get(selector) +"']";			
 				});
 
 				var variable_name = rget_w.exec(full)[0];
@@ -149,7 +130,7 @@ var Data = function(data) {
 					if(variable_name == "local"){
 						key_value = refer_data ? refer_data.get(full.substr(5)) : undefined;
 					} else {						
-						key_value = key_cache[variable_name][full] = val(variable_name == "this" ? full.substr(4) : full);
+						key_value = key_cache[variable_name][full] = self.get(variable_name == "this" ? full.substr(4) : full);
 					}
 				}else{
 					//计算过变量的值
@@ -158,11 +139,11 @@ var Data = function(data) {
 				
 				values.push(key_value === undefined ? "" : key_value);
 				
-				return "arguments[" + (i++) + "]";
+				return "arguments[0][" + (i++) + "]";
 				
 			}
 		});
-		return (new Function("return " + el)).apply(window, values);
+		return (new Function("return " + el)).call(window, values, Data.functions);
 	};
 	
 	//将构造参数中的Data对象作为上级作用域对象
@@ -175,7 +156,7 @@ var Data = function(data) {
 	}
 	
 	this.get = function(){
-		if(arguments.length == 0 || arguments[0] === undefined){
+		if(arguments.length == 0 || arguments[0] === undefined || arguments[0] === ""){
 			return pool.json;
 		}else{
 			return val(arguments[0]);
@@ -205,12 +186,12 @@ var Data = function(data) {
 
 	this.push = function(key, obj){
 		
-		var push_to = val(key);
+		var push_to = self.get(key);
 		if(push_to && push_to.push){
 			push_to.push(obj);
 		}
 				
-		this.update();
+		self.update();
 		
 	};
 	
@@ -225,8 +206,8 @@ var Data = function(data) {
 				return el_cache[str];
 			}
 			
-			var proto_result,out_value, cur_exp;		
-			out_value = str.replace(rget_el_in_str, function(full, exp_str) {				
+			var proto_result, cur_exp;		
+			el_cache[str] = str.replace(rget_el_in_str, function(full, exp_str) {				
 				cur_exp = exp_str;				
 				
 				//如果字符串只包含el表达式，返回原型对象
@@ -237,9 +218,9 @@ var Data = function(data) {
 				return String(elval(exp_str, refer_data));
 			});
 			
-			out_value = proto_result === undefined ? out_value : proto_result;
-
-			el_cache[str] = out_value ;
+			if( proto_result !== undefined ){
+				el_cache[str] = proto_result;
+			}
 			
 			return el_cache[str];
 			
@@ -306,7 +287,7 @@ Adapter = function() {
 		return this.type === type;
 	};
 	
-	// 抽象方法，由扩展Adapter类实现
+	// 通过extend方法扩展Adapter类
 	this.handle = function(){
 		throw new Error("Unimplemented method");
 	};
@@ -1083,23 +1064,25 @@ jCtrl = new function (){
 	
 	this.extend = function(abst, impl) {
 		
-		if(abst =="Function"){
-			Data.instances.push(impl);
-			return;
-		}
+		switch (abst) {
 		
-		abst = {Adapter:Adapter, Tag:Tag}[abst];
-		if (!abst) {
-			throw new Error("superClass not defined");
+		case 'Function':
+			if(!abst.functions){
+				abst.functions = {};
+			}
+			$.extend(abst.functions, impl);
+			break;
+		case 'Adapter':
+			impl.prototype = new Adapter();
+			impl.prototype.constructor = impl;
+			Adapter.instances.push(new impl());
+			break;
+		case 'Tag':
+			impl.prototype = new Tag();
+			impl.prototype.constructor = impl;
+			Tag.instances.push(new impl());
+			break;
 		}
-		
-		if(!abst.instances){
-			abst.instances = [];
-		}
-		impl.prototype = new abst();
-		impl.prototype.constructor = impl;
-		
-		abst.instances.push(new impl);
 		
 		return this;
 	};
@@ -1757,7 +1740,26 @@ jCtrl.extend("Adapter", function() {
 			
 		}
 	};
+})
+
+.extend("Function",{
+
+	substr : function(str, begin, len){
+		return String.prototype.substr.call(str, begin, len);
+	},
+	startWith : function(full, start){
+		return full.indexOf(start) == 0;
+	},
+	join : function(array , separator){
+		return Array.prototype.join.call(array,separator);
+	},
+	trim : function(str){
+		return $.trim(str);
+	}
+	
 });
+
+
 
 window.Log = LogFactory;
 window.App = App;
