@@ -448,8 +448,7 @@ Map = function($map, app) {
 	key = $map.attr("key"), 
 	path_vars = [], 
 	exp, temp, 
-	hasdef = false, 
-	views = [],
+	view,
 	path_data= {},
 	data = $map.attr("data"),
 	dataType = $map.attr("dataType");
@@ -479,12 +478,7 @@ Map = function($map, app) {
 	};
 	
 	this.on = function(name, status){
-		for (var i = 0; i < views.length; i++) {
-			if (views[i].on === status || path_data[name].el(views[i].on) === true) {
-				return  path_data[name].el(views[i].to);
-			}
-		}
-		throw new Error("No accepted view found on status: " + status);
+		return  path_data[name].el(view);
 	};
 	
 	this.data = function(name){
@@ -515,57 +509,20 @@ Map = function($map, app) {
 		}
 	}) + "$");
 
-	$map.find("on").each(function() {
-		var view = $(this);
-		if (view.attr("status") === "success") {
-			hasdef = true;
-		}
-		views.push({
-			on : view.attr("status"),
-			to : view.attr("to")
-		});
-	});
-
-	if (!hasdef) {
-		views.push({
-			on : "success",
-			to : key
-		});
-	}
+	view = $map.attr("to") || key;
 },
 
 View = function($view, $app, app) {
-	var id = $view.attr("id"),
- 	dataType = $view.attr("dataType"), 
- 	viewType = $view.attr("viewType"), 
- 	path = $view.attr("path")  || "", 
- 	scripts = [], 
- 	styles = [], 	
- 	local_data = new Data(),
+	
+	var self = this,
+	path = $view.attr("path")  || "", 
  	data_url = $view.attr("data"),
- 	app_data = new Data(app.data()),
- 	
-	requires = $view.attr("require")? $view.attr("require").split(",") : [],
-	
-	//公共属性
-	attributes = {
-		id : id,
-		url : path + ($view.attr("url") || id + "." + viewType) ,
-		scripts : scripts,
-		styles : styles,
-		dataType : dataType,
-		viewType : viewType,
-		html : "",
-		dom : null,
-		requires : []
-	},
-	
-	dom_instances = [],
-	
-	connector = new Connector(),
-	
-	style_doms = [],
-	
+ 	local_data = new Data(),
+ 	app_data = new Data(app.data()), 
+	requires = $view.attr("require")? $view.attr("require").split(",") : [],	
+	dom_instances = [],	
+	connector = new Connector(),	
+	style_doms = [],	
 	script_texts = [],
 	
 	load_require = function($dom){
@@ -573,7 +530,7 @@ View = function($view, $app, app) {
 		var bean_path = $dom.attr("path");
 		
     	if ($dom.is(".view")) {
-    		attributes.requires.push($dom.attr("id"));
+    		this.requires.push($dom.attr("id"));
 		} else if ($dom.is(".js") || $dom.is(".css")) {
 
 			if ($dom.is(".js")) {
@@ -587,14 +544,26 @@ View = function($view, $app, app) {
 			});
 		}
 	};
+	
+	//公共属性
+	this.id = $view.attr("id");
+	this.dataType = $view.attr("dataType");
+	this.viewType = $view.attr("viewType");
+	this.url = path + ($view.attr("url") || this.id + "." + this.viewType);
+	this.scripts = [];
+	this.styles = [];
+	this.html = "";
+	this.dom = null;
+	this.requires = [];
+	
 	// 加载require属性中定义的对象
 	for(var i=0;i<requires.length;i++){
 		switch(requires[i]){
 			case ".js":
-				scripts.push(path + id + ".js");
+				this.scripts.push(path + this.id + ".js");
 				break;
 			case ".css":
-				styles.push(path + id + ".css");
+				this.styles.push(path + this.id + ".css");
 				break;
 			default:
 				$app.find(requires[i].replace(/\//g,"\\/")).each(function(){
@@ -615,21 +584,21 @@ View = function($view, $app, app) {
 	this.load = function(callback){
 		
 		if(data_url){
-			connector.load(data_url, Adapter.get(dataType)).ready(function(gots){
+			connector.load(data_url, Adapter.get(this.dataType)).ready(function(gots){
 				app_data.set(gots[0] || {});
 			});
 		}
 		
-		connector.load(attributes.url, Adapter.get(viewType)).ready(function(html){
-			attributes.html = html[0]; 
-			attributes.dom = $("<div>").html(html[0]);
+		connector.load(this.url, Adapter.get(this.viewType)).ready(function(html){
+			self.html = html[0]; 
+			self.dom = $("<div>").html(html[0]);
 		});
 		
-		connector.load(scripts).ready(function(texts){
+		connector.load(this.scripts).ready(function(texts){
 			script_texts = texts;
 		});
 		
-		connector.load(styles).ready(function(texts){
+		connector.load(this.styles).ready(function(texts){
 			for(var i = 0; i < texts.length; i++){
 				
 				var style = document.createElement("style"), 
@@ -653,7 +622,7 @@ View = function($view, $app, app) {
 		});		
 		
 		connector.clear(function(){
-			callback(id);
+			callback(self.id);
 		});
 		
 		return this;
@@ -683,19 +652,11 @@ View = function($view, $app, app) {
 	};
 	
 	this.match = function(){
-		return id === arguments[0];
-	};
-	
-	this.attr = function(key, value){
-		if(value){
-			attributes[key] = value;
-		}else{
-			return attributes[key];
-		}
+		return this.id === arguments[0];
 	};
 	
 	this.generate = function(){
-		var new_dom = attributes.dom.clone();
+		var new_dom = this.dom.clone();
 		dom_instances.push(new_dom);
 		Tag.parse(new_dom, app, app_data, local_data);
 		return new_dom.contents();
@@ -704,7 +665,7 @@ View = function($view, $app, app) {
 },
 
 Binding = function($element, app, app_data, local_data, fn){
-	var original = $element,
+	var $original = $element,
 	attr_exp = {},
 	update_fn = fn,
 	last_val/*,
@@ -721,7 +682,7 @@ Binding = function($element, app, app_data, local_data, fn){
 			if(attr_exp.hasOwnProperty(el)){
 				this.bindExp += attr_exp[el]; 
 			}else{
-				this.bindExp += attr_exp[el] = original.attr(el.substr(1));					
+				this.bindExp += attr_exp[el] = $original.attr(el.substr(1));					
 			} 
 		}else{
 			this.bindExp += el;
@@ -738,7 +699,7 @@ Binding = function($element, app, app_data, local_data, fn){
 				if(attr_exp.hasOwnProperty(el)){
 					el = attr_exp[el];
 				}else{
-					el = attr_exp[el] = original.attr(el.substr(1));					
+					el = attr_exp[el] = $original.attr(el.substr(1));					
 				} 
 			}
 			return this.appData.el(el, this.localData);
@@ -812,7 +773,7 @@ Tag = function() {
 		}
 		
 		if(typeof binding.element != "object" ){
-			binding.element = $(document.createTextNode(binding.element));
+			binding.element = $("<div>" + binding.element + "</div>").contents();
 		}
 		
 		binding.bind();
@@ -871,7 +832,7 @@ Controller = function(app) {
 		
 		view_load_ready = function(id){
 			
-			required_views[id].attr("dom").find("[require]").each(function(){
+			required_views[id].dom.find("[require]").each(function(){
 				
 				var required_view_id = $(this).attr("require"), 
 				required_view = required_views[required_view_id];
@@ -907,7 +868,7 @@ Controller = function(app) {
 			entry_view_id = map.on(key, status);
 
 			var entry_view = app.view(entry_view_id),
-			required_id_list = entry_view.attr("requires");
+			required_id_list = entry_view.requires;
 
 			required_views[entry_view_id] = entry_view;
 			entry_view.load(view_load_ready);
@@ -922,7 +883,7 @@ Controller = function(app) {
 				
 				//加载依赖视图后继续加载该视图的依赖视图
 				//依赖视图会被包含多次
-				var current_required_id_list = required_views[required_id_list[i]].attr("requires");
+				var current_required_id_list = required_views[required_id_list[i]].requires;
 				
 				for(var j =0; j < current_required_id_list.length; j++){
 					
@@ -941,7 +902,6 @@ App = function($app){
 	var self = this,
 	views = [],
 	maps = [],
-	_session = {},
 	sys_data = new Data(),
 	app_data = new Data(sys_data),
 	langs = {};
@@ -950,14 +910,6 @@ App = function($app){
 	
 	this.data = function(which){
 		return which === "sys" ? sys_data : app_data;
-	};
-
-	this.session = function(key, value) {
-		if (value === undefined) {
-			return _session[key];
-		} else {
-			_session[key] = value;
-		}
 	};
 	
 	this.lang = function(name, obj){
@@ -989,8 +941,6 @@ App = function($app){
 			}
 		}
 	};
-	
-	app_data.set({session:{}, model:{}});
 	
 	$app.find("bean.view").each(function(){
 		views.push(new View($(this), $app, self));
@@ -1067,10 +1017,10 @@ jCtrl = new function (){
 		switch (abst) {
 		
 		case 'Function':
-			if(!abst.functions){
-				abst.functions = {};
+			if(!Data.functions){
+				Data.functions = {};
 			}
-			$.extend(abst.functions, impl);
+			$.extend(Data.functions, impl);
 			break;
 		case 'Adapter':
 			impl.prototype = new Adapter();
@@ -1357,7 +1307,7 @@ jCtrl.extend("Adapter", function() {
 		
 		var xml_dom = $.parseXML(xml),
 		json = xmlToJson(xml_dom);
-		return json.data || json.app || json.root || json;
+		return json;
 	};
 })
 
@@ -1608,8 +1558,7 @@ jCtrl.extend("Adapter", function() {
 	this.name = "out";
 	
 	this.handle = function(){
-		//this.element = $("<span>").text(this.val("@value"));
-		this.element = this.val("@value");
+		this.element = $("<span>").text(this.val("@value"));
 		this.bindTo("@value");
 	};
 	this.update = function(){
