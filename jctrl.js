@@ -6,9 +6,10 @@ var Data = function(data) {
 	updater = [], 
 	pool, 
 	chain,
-	key_cache = {},
-	el_cache={},
 	on = true,
+	val_fn_cache = {},
+	el_fn_cache = {},
+	str_val_cache = {},
 	
 	words_map = {
 		lt : "<",
@@ -31,10 +32,10 @@ var Data = function(data) {
 	// '[^']*'|"[^"]*" 过滤字符串 
 	// [_$a-zA-Z][_$\w]*(?:\.[_$\w]*|\[[^\[\]]*\])* 匹配变量名，计算变量值加入参数列表
 	// (?:\s*\()? 匹配函数
-	rget_key_in_el = /'[^']*'|"[^"]*"|[_$a-zA-Z][_$\w]*(?:\.[_$\w]*|\[[^\[\]]*\])*(?:\s*\()?/g,
+	rget_key_in_el = /'[^']*'|"[^"]*"|[_$a-zA-Z][_$\w]*(?:\s*\.\s*[_$\w]*|\s*\[\s*[^\[\]]*\s*\])*(?:\s*\()?/g,
 	
 	// 匹配中括号运算符，取出其中变量并计算其值
-	rget_operator_in_key = /\[(?!['"\d])([^\[\]])*\]/g,
+	rget_operator_in_key = /\[\s*(?!['"\d\s])([^\[\]]*)\]/g,
 	
 	// 匹配字符串中的el表达式
 	rget_el_in_str = /[$#]?{((?:'[^']*'|"[^']*"|[^{}]+)+)}/g,
@@ -47,14 +48,18 @@ var Data = function(data) {
 	val = function() {
 		try {
 			
+			if(val_fn_cache.hasOwnProperty(arguments[0])){
+				return val_fn_cache[arguments[0]].apply(pool,arguments);
+			}
+			
 			var variable_name, key;
 			
 			if(arguments[0].charAt(0)=='['){
 				variable_name = rget_var_in_brackets.exec(arguments[0])[1];
-				key = "data.json" + arguments[0];
+				key = "this.json" + arguments[0];
 			}else {
 				variable_name = rget_w.exec(arguments[0])[0];
-				key = (arguments[0].charAt(0) == '.' ? "data.json" : "data.json.") + arguments[0];
+				key = (arguments[0].charAt(0) == '.' ? "this.json" : "this.json.") + arguments[0];
 			}
 			
 			//当前和上级作用域中都不存在该属性时
@@ -75,14 +80,12 @@ var Data = function(data) {
 					return chain.get(arguments[0]);
 				}
 				return;
-			}
-
-			if (arguments.length == 2) {
-				(new Function("data", "value", key + "=value;"))(pool, arguments[1]);
-				self.update();
-			} else {
-				return (new Function("data", "return " + key))(pool);
-			}
+			}			
+			
+			return (val_fn_cache[arguments[0]] 
+				= new Function("return arguments.length==1? " + key + " : " + key + "=arguments[1]"))
+					.apply(pool,arguments);
+			
 		} catch (e) {
 			if (e.name === "TypeError") {
 				return undefined;
@@ -93,8 +96,12 @@ var Data = function(data) {
 	},
 	
 	elval = function(el, refer_data) {
-
-		var i = 0, values = [], key_value;
+		
+		if(el_fn_cache.hasOwnProperty(el)){
+			return el_fn_cache[el](self, refer_data, Data.functions);
+		}
+		
+		var variable_name;
 		
 		el = el.replace(rget_key_in_el, function(full) {
 			//过滤字符串
@@ -109,41 +116,29 @@ var Data = function(data) {
 				//过滤函数
 				if (full.charAt(full.length-1) =="(") {
 					
-					return "arguments[1]['" + full.substr(0,full.length-1) + "'](";
+					return "arguments[2]['" + $.trim(full.substr(0,full.length-1)) + "'](";
 				}
 				
 				//处理中括号运算符
 				full = full.replace(rget_operator_in_key, function(_, selector){
-					return "['"+ self.get(selector) +"']";			
+					variable_name = rget_w.exec(selector)[0];
+					if(variable_name == "local"){
+						return "[arguments[1].get('" + selector.substr(5) + "')]";	
+					}
+					return "[arguments[0].get('" + selector + "')]";	
 				});
 
 				var variable_name = rget_w.exec(full)[0];
-
-				if(!key_cache.hasOwnProperty(variable_name)){
-					key_cache[variable_name] = {};
+				
+				//引用外部变量
+				if(variable_name == "local"){
+					return "arguments[1].get('" + full.substr(5) + "')";	
 				}
-				
-				//未计算过值的变量
-				if(!key_cache[variable_name].hasOwnProperty(full)){
-					
-					//引用外部变量
-					if(variable_name == "local"){
-						key_value = refer_data ? refer_data.get(full.substr(5)) : undefined;
-					} else {						
-						key_value = key_cache[variable_name][full] = self.get(variable_name == "this" ? full.substr(4) : full);
-					}
-				}else{
-					//计算过变量的值
-					key_value = key_cache[variable_name][full];
-				}
-				
-				values.push(key_value === undefined ? "" : key_value);
-				
-				return "arguments[0][" + (i++) + "]";
-				
+				return "arguments[0].get('" + full + "')";					
 			}
 		});
-		return (new Function("return " + el)).call(window, values, Data.functions);
+		
+		return (el_fn_cache[el] = new Function("return " + el))(self, refer_data, Data.functions);
 	};
 	
 	//将构造参数中的Data对象作为上级作用域对象
@@ -202,12 +197,12 @@ var Data = function(data) {
 				return str;
 			}
 			
-			if(el_cache.hasOwnProperty(str)){
-				return el_cache[str];
+			if(str_val_cache.hasOwnProperty(str)){
+				return str_val_cache[str];
 			}
 			
 			var proto_result, cur_exp;		
-			el_cache[str] = str.replace(rget_el_in_str, function(full, exp_str) {				
+			str_val_cache[str] = str.replace(rget_el_in_str, function(full, exp_str) {				
 				cur_exp = exp_str;				
 				
 				//如果字符串只包含el表达式，返回原型对象
@@ -219,10 +214,10 @@ var Data = function(data) {
 			});
 			
 			if( proto_result !== undefined ){
-				el_cache[str] = proto_result;
+				str_val_cache[str] = proto_result;
 			}
 			
-			return el_cache[str];
+			return str_val_cache[str];
 			
 		} catch (e) {
 			throw new Error("Unrecognized expression: " + cur_exp);
@@ -271,13 +266,13 @@ var Data = function(data) {
 		} else if (arguments[0]) {
 			updater.push(arguments[0]);
 			
-		} else if (on) {			
-			key_cache = {};
+		} else if (on) {	
 			for ( var i = 0; i < updater.length; i++) {
 				updater[i].update();
 			}			
+		}else{
+			str_val_cache = {};
 		}
-		el_cache={};
 	};	
 },
 
@@ -477,7 +472,7 @@ Map = function($map, app) {
 		return true;
 	};
 	
-	this.on = function(name, status){
+	this.on = function(name){
 		return  path_data[name].el(view);
 	};
 	
@@ -795,17 +790,17 @@ Controller = function(app) {
 	load_data = function(url, dataType, callback) {
 		
 		if (!url) {
-			callback.call(self, "success");
+			callback.call(self);
 			return;
 		}
 		
 		connector.load(url, Adapter.get(dataType)).ready(function(got, error){
 			if(error.length>0){
-				callback.call(self, "error");
+				callback.call(self);
 				return;
 			}
 			app.data().set(got[0]);
-			callback.call(self, "success");
+			callback.call(self);
 		});
 	};
 	
@@ -863,9 +858,9 @@ Controller = function(app) {
 			
 		};
 		
-		load_data(map.data(key), map.dataType(), function(status){
+		load_data(map.data(key), map.dataType(), function(){
 			
-			entry_view_id = map.on(key, status);
+			entry_view_id = map.on(key);
 
 			var entry_view = app.view(entry_view_id),
 			required_id_list = entry_view.requires;
