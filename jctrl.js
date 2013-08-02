@@ -38,7 +38,7 @@ var Data = function(data) {
 	rget_operator_in_key = /\[\s*(?!['"\d\s])([^\[\]]*)\]/g,
 	
 	// 匹配字符串中的el表达式
-	rget_el_in_str = /[$#]?{((?:'[^']*'|"[^']*"|[^{}]+)+)}/g,
+	rget_el_in_str = /{((?:'[^']*'|"[^']*"|[^{}]+)+)}/g,
 	
 	// 匹配中括号运算符中字符串字段名
 	rget_var_in_brackets = /\[\s*['"]([^\]]+)['"]\s*\]/,
@@ -114,8 +114,7 @@ var Data = function(data) {
 					return alias;
 				}
 				//过滤函数
-				if (full.charAt(full.length-1) =="(") {
-					
+				if (full.charAt(full.length-1) =="(") {					
 					return "arguments[2]['" + $.trim(full.substr(0,full.length-1)) + "'](";
 				}
 				
@@ -123,18 +122,18 @@ var Data = function(data) {
 				full = full.replace(rget_operator_in_key, function(_, selector){
 					variable_name = rget_w.exec(selector)[0];
 					if(variable_name == "local"){
-						return "[arguments[1].get('" + selector.substr(5) + "')]";	
+						return "['+arguments[1].get('" + selector.substr(5) + "')+']";	
 					}
-					return "[arguments[0].get('" + selector + "')]";	
+					return "['+arguments[0].get('" + selector + "')+']";	
 				});
 
 				var variable_name = rget_w.exec(full)[0];
 				
 				//引用外部变量
 				if(variable_name == "local"){
-					return "arguments[1].get('" + full.substr(5) + "')";	
+					return "arguments[1].get('" + full.substr(5).replace("'",'"') + "')";	
 				}
-				return "arguments[0].get('" + full + "')";					
+				return "arguments[0].get('" + full.replace("'",'"') + "')";					
 			}
 		});
 		
