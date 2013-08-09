@@ -4,11 +4,12 @@ var Data = function(data) {
 	
 	var self = this, 
 	updater = [], 
-	json = {}, 
+	pool, 
 	chain,
 	on = true,
-	el_fn_cache = Data.el_cache,
 	val_fn_cache = {},
+	el_fn_cache = {},
+	str_val_cache = {},
 	
 	words_map = {
 		lt : "<",
@@ -21,11 +22,11 @@ var Data = function(data) {
 		mod : "%",
 		and : "&&",
 		or : "||",
+		"!=" : "!==",
+		"!==" : "!==",
 		"=" : "===",
 		"==" : "===",
 		"===" : "===",
-		"!=" : "!==",
-		"!==" : "!==",
 		"true" : "true",
 		"false" : "false",
 		"null" : "null",
@@ -33,27 +34,38 @@ var Data = function(data) {
 	},
 	
 	// 将el表达式转换成js表达式 
-	rget_key_in_el = /'[^']*'|"[^"]*"|!?=+|\]|\[|(?:\.)?\s*([_$a-zA-Z][_$\w]*)\s*(?:\()?/g,
+	// '[^']*'|"[^"]*" 过滤字符串 
+	// [_$a-zA-Z][_$\w]*(?:\.[_$\w]*|\[[^\[\]]*\])* 匹配变量名，计算变量值加入参数列表
+	// (?:\s*\()? 匹配函数
+	rget_key_in_el = /'[^']*'|"[^"]*"|(?:!)?=+|(?:\.\s*)?([_$a-zA-Z][_$\w]*)(\s*\()?/g,
+	
+	// 匹配中括号运算符，取出其中变量并计算其值
+	rget_operator_in_key = /\[\s*(?!['"\d\s])([^\[\]]*)\]/g,
 	
 	// 匹配字符串中的el表达式
 	rget_el_in_str = /{((?:'[^']*'|"[^']*"|[^{}]+)+)}/g,
-		 
+	
+	// 匹配中括号运算符中字符串字段名
+	rget_var_in_brackets = /\[\s*['"]([^\]]+)['"]\s*\]/,
+	
+	rget_w = /\w+/,
+	 
 	val = function() {
 		try {
 			
 			if(val_fn_cache.hasOwnProperty(arguments[0])){
-				return val_fn_cache[arguments[0]].apply(json, arguments);
+				return val_fn_cache[arguments[0]].apply(pool,arguments);
 			}
 			
-			var variable_name, key, i=0;
+			var variable_name, key;
 			
-			for(;i<arguments[0].length;i++){
-				if(arguments[0].charAt(i) == "[" || arguments[0].charAt(i) == "."){
-					break;
-				}
-			} 
-			variable_name = arguments[0].substring(0,i);
-			key = "this." + arguments[0];
+			if(arguments[0].charAt(0)=='['){
+				variable_name = rget_var_in_brackets.exec(arguments[0])[1];
+				key = "this.json" + arguments[0];
+			}else {
+				variable_name = rget_w.exec(arguments[0])[0];
+				key = (arguments[0].charAt(0) == '.' ? "this.json" : "this.json.") + arguments[0];
+			}
 			
 			//当前和上级作用域中都不存在该属性时
 			//进行写操作时对未定义的属性先进行定义,进行读操作时返回未定义
@@ -66,121 +78,89 @@ var Data = function(data) {
 			}
 
 			//属性定义在上级作用域中
-			if (!json.hasOwnProperty(variable_name)) {
+			if (pool.json && !pool.json.hasOwnProperty(variable_name)) {
 				if(arguments.length == 2){
 					chain.set(arguments[0], arguments[1]);
 				}else{
 					return chain.get(arguments[0]);
 				}
 				return;
-			}
-			
-			if(Data.var_cache.hasOwnProperty(arguments[0])){
-				return (val_fn_cache[arguments[0]] = Data.var_cache[arguments[0]]).apply(json, arguments);
 			}			
 			
 			return (val_fn_cache[arguments[0]] 
 				= new Function("return arguments.length==1? " + key + " : " + key + "=arguments[1]"))
-					.apply(json, arguments);
+					.apply(pool,arguments);
 			
 		} catch (e) {
 			if (e.name === "TypeError") {
 				return undefined;
 			}
-			throw new Error("Unrecognized identifier: " + arguments[0]);
+			throw new Error("Uncorrect arguments");
 		}
 
 	},
 	
 	elval = function(el, refer_data) {
-		try {
+		try{
 			if(el_fn_cache.hasOwnProperty(el)){
 				return el_fn_cache[el](self, refer_data, Data.functions);
 			}
-			
-			var scopes = [], deep = 0,
-			
-			el_bulid = el.replace(rget_key_in_el, function(full, key) {
-				if (full.charAt(0) === '"' || full.charAt(0) === "'" ) {
-					return full;
-				}
+			var el_bulid = el.replace(rget_key_in_el, function(full, match_var, match_op) {
 				
+				//过滤字符串和属性 x[x + 'x'] self.get('x[' +self.get('x') + 'x' +'])'; 
+				if (full.charAt(0) === "'" || full.charAt(0) === '"' || full.charAt(0) === ".") {
+					return full;
+				} 
 				//关键字
-				if(words_map.hasOwnProperty(full)){
+				if (words_map.hasOwnProperty(full)) {
 					return words_map[full];
 				}
-				
-				//访问的变量是this或local时，中括号中的表达式作为实际变量名
-				if(full == "["){
-					deep++;
-					if( deep == scopes[scopes.length-1] + 1){
-						return "(";
-					}
-					return "[";
-				}
-				
-				if(full == "]"){
-					deep--;
-					if(deep == scopes[scopes.length-1]){
-						scopes.pop();
-						return ")";
-					}
-					return "]";				
-				}
-				
-				if (full.charAt(0) === '.'){
-					if(deep == scopes[scopes.length-1]){
-						scopes.pop();
-						return "('" + key + "')";
-					}
-					return full;
-				}
-				
 				//函数
-				if (full.charAt(full.length-1) =="(") {					
-					return "arguments[2]['" + key + "'](";
+				if (match_op == "(") {					
+					return "arguments[2]['" + match_var + "'](";
+				}			
+				
+				if(match_var == "local"){
+					return "arguments[1].get()";
 				}
 				
-				if(full == "this" || full == "local"){
-					scopes.push(deep);
-					return "arguments[" +( full == "this" ? 0 : 1 )+ "].get";
+				if(match_var == "this"){
+					return "arguments[0].get()";
 				}
 				
-				return "arguments[0].get('"+ key +"')";
+				return "arguments[0].get('" + match_var + "')";	
 				
 			});
-			
+			console.log("parse " + el + " to " + el_bulid);
 			return (el_fn_cache[el] = new Function("return " + el_bulid))(self, refer_data, Data.functions);
-			
-		} catch (e) {
+		}catch(e){
 			if (e.name === "TypeError") {
-				return "";
+				return undefined;
 			}
-			throw new Error("Unrecognized expression: " + el);
+			throw new Error("Uncorrect arguments");
 		}
 	};
 	
 	//将构造参数中的Data对象作为上级作用域对象
 	if(data instanceof Data){
 		chain = data;
+		pool = {json : {}};
 		chain.update(self);
-	}else if(typeof data == "object"){
-		json = data;
+	}else{
+		pool = {json : data === undefined ? {} : data};
 	}
 	
 	this.get = function(){
 		if(arguments.length == 0 || arguments[0] === undefined || arguments[0] === ""){
-			return json;
+			return pool.json;
+		}else{
+			return val(arguments[0]);
 		}
-		return val(arguments[0]);
 	};
 	
 	this.set = function(){
 		if (arguments.length == 1) {
-			if(typeof arguments[0] !== "object"){
-				return;
-			}
-			json = arguments[0];
+			pool.json = arguments[0];
 		} else {
 			val(arguments[0], arguments[1]);
 		}
@@ -188,11 +168,14 @@ var Data = function(data) {
 	};
 
 	this.define = function(key, value){
-		json[key] = value;
+		if(!pool.json){
+			pool.json = {};
+		}
+		pool.json[key] = value;
 	};
 	
 	this.has = function(key){
-		return json.hasOwnProperty(key) ? true 
+		return pool.json && pool.json.hasOwnProperty(key) ? true 
 			: chain ? chain.has(key) : false;
 	};
 
@@ -209,28 +192,36 @@ var Data = function(data) {
 	
 	//计算字符串中el表达式的值
 	this.el = function(str, refer_data) {
-		
-		if(typeof str != "string"){
-			return str;
-		}
-		
-		var proto_result, cur_exp;		
-		str = str.replace(rget_el_in_str, function(full, exp_str) {				
-			cur_exp = exp_str;				
-			
-			//如果字符串只包含el表达式，返回原型对象
-			if (str.length == full.length){
-				 proto_result = elval(exp_str, refer_data);		
-				 return;			
+		try {
+			if(typeof str != "string"){
+				return str;
 			}
-			return String(elval(exp_str, refer_data));
-		});
-		
-		if( proto_result !== undefined ){
-			str = proto_result;
+			
+			if(str_val_cache.hasOwnProperty(str)){
+				return str_val_cache[str];
+			}
+			
+			var proto_result, cur_exp;		
+			str_val_cache[str] = str.replace(rget_el_in_str, function(full, exp_str) {				
+				cur_exp = exp_str;				
+				
+				//如果字符串只包含el表达式，返回原型对象
+				if (str.length == full.length){
+					 proto_result = elval(exp_str, refer_data);		
+					 return;			
+				}
+				return String(elval(exp_str, refer_data));
+			});
+			
+			if( proto_result !== undefined ){
+				str_val_cache[str] = proto_result;
+			}
+			
+			return str_val_cache[str];
+			
+		} catch (e) {
+			throw new Error("Unrecognized expression: " + cur_exp);
 		}
-		
-		return str;
 	};
 	
 	this.test = function(el){
@@ -247,9 +238,8 @@ var Data = function(data) {
 				if (keys_group[0].charAt(0) === "'" 
 					|| keys_group[0].charAt(0) === '"' 
 						||  keys_group[0].charAt(0) === "." 
-							|| keys_group[0] == "["
-								|| keys_group[0] == "]"
-									|| words_map.hasOwnProperty(keys_group[0])) {
+							||  keys_group[2] !== undefined
+								|| words_map.hasOwnProperty(keys_group[0])) {
 					continue;
 				} 
 				
@@ -265,7 +255,7 @@ var Data = function(data) {
 		if(el.charAt(0) == "{" && el.charAt(el.length -1) == "}" && key_count ==1){
 			test_result.key = $.trim(el.substr(1,el.length -2));
 			if(test_result.scope == 1){
-				test_result.key = test_result.key.substr(test_result.key.indexOf(".") + 1);
+				test_result.key = test_result.key.substr(5);
 			}
 		}
 		
@@ -273,20 +263,21 @@ var Data = function(data) {
 	};
 	
 	this.update = function() {
-		
 		if (typeof arguments[0] == "boolean") {
 			on = arguments[0];
 			return;
-		} else if (arguments[0] instanceof Data || arguments[0] instanceof Binding) {
+		} else if (arguments[0]) {
 			updater.push(arguments[0]);
 			return;
 		} 
+		
+		str_val_cache = {};
 		
 		if (on) {	
 			for ( var i = 0; i < updater.length; i++) {
 				updater[i].update();
 			}			
-		}	
+		}
 	};	
 },
 
@@ -1026,6 +1017,9 @@ jCtrl = new function (){
 		switch (abst) {
 		
 		case 'Function':
+			if(!Data.functions){
+				Data.functions = {};
+			}
 			$.extend(Data.functions, impl);
 			break;
 		case 'Adapter':
@@ -1131,13 +1125,9 @@ jCtrl = new function (){
 	
 };
 
-$.extend(Data, {
-	functions : {},
-	el_cache : {},
-	var_cache : {}
-});
 
 //TODO: 扩展Tag对象
+
 $.extend(Tag, {
 	tns : [],
 	ns: (function(){
@@ -1407,14 +1397,12 @@ jCtrl.extend("Adapter", function() {
 				});
 				
 				break;
-		}		
+		}
+
+		
 	};
 	this.update = function() {
 		var binding = this;
-		if(binding.val() == binding.element.val()){
-			return;
-		}
-		
 		binding.element.val(binding.val());
 	};
 })
@@ -1452,9 +1440,9 @@ jCtrl.extend("Adapter", function() {
 		
 		if(test.key){
 			if(test.scope == 1){
-				binding.localData.set(test.key, undefined);
+				binding.localData.set(test.key, var_value);
 			}else{
-				binding.appData.set(test.key, undefined);
+				binding.appData.set(test.key, var_value);
 			}
 		}
 		

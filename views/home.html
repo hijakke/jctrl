@@ -8,7 +8,7 @@
 
 	<j:out value="length: {list.length}, x: {x}, local.x: {local.x}"></j:out>
 
-	<j:foreach begin="{x-2}" end="{x}" var ="i">
+	<j:foreach items="{list}" var ="i">
 		<div>
 			<j:out value="{i}" />
 		</div>
