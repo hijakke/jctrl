@@ -1,5 +1,7 @@
 (function(window, $, undefined) {
 
+'use strict';
+
 var Data = function(data) {
 	
 	var self = this, 
@@ -33,7 +35,7 @@ var Data = function(data) {
 	},
 	
 	// 将el表达式转换成js表达式 
-	rget_key_in_el = /'[^']*'|"[^"]*"|!?=+|\]|\[|(?:\.)?\s*([_$a-zA-Z][_$\w]*)\s*(?:\()?/g,
+	rget_key_in_el = /'[^']*'|"[^"]*"|!?=+|(?:\.)?\s*([_$a-zA-Z][_$\w]*)\s*(?:\()?|./g,
 	
 	// 匹配字符串中的el表达式
 	rget_el_in_str = /{((?:'[^']*'|"[^']*"|[^{}]+)+)}/g,
@@ -84,7 +86,7 @@ var Data = function(data) {
 					.apply(json, arguments);
 			
 		} catch (e) {
-			if (e.name === "TypeError") {
+			if (e.name == "TypeError") {
 				return undefined;
 			}
 			throw new Error("Unrecognized identifier: " + arguments[0]);
@@ -98,10 +100,10 @@ var Data = function(data) {
 				return el_fn_cache[el](self, refer_data, Data.functions);
 			}
 			
-			var scopes = [], deep = 0,
+			var scopes = [], deep = 0, end = true,
 			
 			el_bulid = el.replace(rget_key_in_el, function(full, key) {
-				if (full.charAt(0) === '"' || full.charAt(0) === "'" ) {
+				if (full.charAt(0) == '"' || full.charAt(0) == "'" || full == " " ) {
 					return full;
 				}
 				
@@ -112,6 +114,7 @@ var Data = function(data) {
 				
 				//访问的变量是this或local时，中括号中的表达式作为实际变量名
 				if(full == "["){
+					end = true;
 					deep++;
 					if( deep == scopes[scopes.length-1] + 1){
 						return "(";
@@ -128,7 +131,8 @@ var Data = function(data) {
 					return "]";				
 				}
 				
-				if (full.charAt(0) === '.'){
+				if (full.charAt(0) == '.'){
+					end = true;
 					if(deep == scopes[scopes.length-1]){
 						scopes.pop();
 						return "('" + key + "')";
@@ -137,18 +141,32 @@ var Data = function(data) {
 				}
 				
 				//函数
-				if (full.charAt(full.length-1) =="(") {					
+				if (full.charAt(full.length-1) == "(") {					
 					return "arguments[2]['" + key + "'](";
 				}
 				
-				if(full == "this" || full == "local"){
+				if(key == "this" || key == "local"){
+					end = false;
 					scopes.push(deep);
-					return "arguments[" +( full == "this" ? 0 : 1 )+ "].get";
+					return "arguments[" +( key == "this" ? 0 : 1 )+ "].get";
 				}
 				
-				return "arguments[0].get('"+ key +"')";
+				if(key && /^[_$a-zA-Z]/.test(key)){
+					return "arguments[0].get('"+ key +"')";
+				}
+				
+				if(!end){
+					end = true;
+					return "()" + full;
+				}
+				
+				return full;
 				
 			});
+			
+			if(!end){
+				el_bulid = el_bulid + "()";
+			}
 			
 			return (el_fn_cache[el] = new Function("return " + el_bulid))(self, refer_data, Data.functions);
 			
@@ -1378,6 +1396,19 @@ jCtrl.extend("Adapter", function() {
 
 .extend("Tag", function(){
 	
+	this.name = "bind";
+	
+	this.handle = function(){
+		
+	};
+	
+	this.update = function(){
+		
+	};
+})
+
+.extend("Tag", function(){
+	
 	this.ns = "";
 	this.name = "input";
 	
@@ -1716,8 +1747,13 @@ jCtrl.extend("Adapter", function() {
 	},
 	trim : function(str){
 		return $.trim(str);
+	},
+	json : function(obj){
+		if ((typeof JSON == "undefined")
+				|| (typeof JSON.stringify == "undefined"))
+			throw new Error("json2.js");
+		return JSON.stringify(obj);
 	}
-	
 });
 
 

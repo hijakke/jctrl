@@ -3,12 +3,14 @@
 	<j:set var="x" value="12" />
 	<j:set var="local.x" value="13" />
 
-	<input type="text" value="{x}" />
+	<j:bind param="{x}" method="post" remote="http://127.0.0.1/test/home.json" />
+
+	<input type="text" value="{x}" /> 
 	<input type="text" value="{local.x}" />
 
 	<j:out value="length: {list.length}, x: {x}, local.x: {local.x}"></j:out>
 
-	<j:foreach items="{list}" var ="i">
+	<j:foreach begin="{x}" end="{x-1+3}" var="i">
 		<div>
 			<j:out value="{i}" />
 		</div>
