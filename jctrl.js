@@ -8,9 +8,9 @@ var Data = function(data) {
 	updater = [], 
 	json = {}, 
 	chain,
-	on = true,
-	el_fn_cache = Data.el_cache,
-	val_fn_cache = {},
+	update_on = true,
+	el_cache = Data.el_cache,
+	val_cache = {},
 	
 	words_map = {
 		lt : "<",
@@ -43,8 +43,8 @@ var Data = function(data) {
 	val = function() {
 		try {
 			
-			if(val_fn_cache.hasOwnProperty(arguments[0])){
-				return val_fn_cache[arguments[0]].apply(json, arguments);
+			if(val_cache.hasOwnProperty(arguments[0])){
+				return val_cache[arguments[0]].apply(json, arguments);
 			}
 			
 			var variable_name, key, i=0;
@@ -78,12 +78,12 @@ var Data = function(data) {
 			}
 			
 			if(Data.var_cache.hasOwnProperty(arguments[0])){
-				return (val_fn_cache[arguments[0]] = Data.var_cache[arguments[0]]).apply(json, arguments);
+				return (val_cache[arguments[0]] = Data.var_cache[arguments[0]]).apply(json, arguments);
 			}			
 			
-			return (val_fn_cache[arguments[0]] 
-				= new Function("return arguments.length==1? " + key + " : " + key + "=arguments[1]"))
-					.apply(json, arguments);
+			return (val_cache[arguments[0]] 
+						= new Function("return arguments.length==1? " + key + " : " + key + "=arguments[1]"))
+							.apply(json, arguments);
 			
 		} catch (e) {
 			if (e.name == "TypeError") {
@@ -96,8 +96,8 @@ var Data = function(data) {
 	
 	elval = function(el, refer_data) {
 		try {
-			if(el_fn_cache.hasOwnProperty(el)){
-				return el_fn_cache[el](self, refer_data, Data.functions);
+			if(el_cache.hasOwnProperty(el)){
+				return el_cache[el](self, refer_data, Data.functions);
 			}
 			
 			var scopes = [], deep = 0, end = true,
@@ -168,7 +168,7 @@ var Data = function(data) {
 				el_bulid = el_bulid + "()";
 			}
 			
-			return (el_fn_cache[el] = new Function("return " + el_bulid))(self, refer_data, Data.functions);
+			return (el_cache[el] = new Function("return " + el_bulid))(self, refer_data, Data.functions);
 			
 		} catch (e) {
 			if (e.name === "TypeError") {
@@ -293,14 +293,14 @@ var Data = function(data) {
 	this.update = function() {
 		
 		if (typeof arguments[0] == "boolean") {
-			on = arguments[0];
+			update_on = arguments[0];
 			return;
 		} else if (arguments[0] instanceof Data || arguments[0] instanceof Binding) {
 			updater.push(arguments[0]);
 			return;
 		} 
 		
-		if (on) {	
+		if (update_on) {	
 			for ( var i = 0; i < updater.length; i++) {
 				updater[i].update();
 			}			
@@ -693,6 +693,7 @@ View = function($view, $app, app) {
 
 Binding = function($element, app, app_data, local_data, fn){
 	var $original = $element,
+	update_on = true,
 	attr_exp = {},
 	update_fn = fn,
 	last_val/*,
@@ -734,18 +735,36 @@ Binding = function($element, app, app_data, local_data, fn){
 	};
 	
 	this.update = function(){
-		var cur_val = this.val();
-		last_element = this.element;
-		if(update_fn && cur_val !== last_val){
-			
-			update_fn.call(this);
-			
-			if(last_element !== this.element && this.element && last_element[0] !== this.element[0]){
-//				last_element.replaceWith(this.element);
-			}
+		
+		if(arguments.length == 1 && typeof arguments[0] == "boolean"){
+			update_on = arguments[0];
+			return;
 		}
 		
-		last_val = cur_val;
+		if(!update_on){
+			return;
+		}
+		
+		try{
+			var cur_val = this.val(),
+			last_element = this.element;
+			
+			update_on = false;
+			
+			if(update_fn && cur_val !== last_val){
+				
+				update_fn.call(this);
+				
+				if(last_element !== this.element && this.element && last_element[0] !== this.element[0]){
+					// last_element.replaceWith(this.element);
+				}
+			}
+		}catch(e){
+			throw e;
+		}finally{
+			update_on = true;
+			last_val = cur_val;
+		}
 	};
 	
 	this.bind = function(){
@@ -1346,8 +1365,16 @@ jCtrl.extend("Adapter", function() {
 
 	this.handle = function(json) {
 		
-		return (new Function("return " + json))();
-
+		try{
+			return $.parseJSON(json);
+		}catch(e){		
+			try{
+				return (new Function("return " + json))();
+			}catch(e){
+				return null;
+			}
+		}
+		
 	};
 })
 
@@ -1400,10 +1427,49 @@ jCtrl.extend("Adapter", function() {
 	
 	this.handle = function(){
 		
+		this.bindTo("@param");		
+		this.element.remove();
+		
 	};
 	
 	this.update = function(){
 		
+		var binding = this,		
+		data = binding.val("@param"),
+		contentType = 'application/x-www-form-urlencoded';
+		
+		if(binding.element.is("[when]") && binding.val("@when") !== true){
+			return;
+		}
+		
+		if(typeof data == "string"){
+			contentType = 'application/json';
+		}
+		
+		$.ajax({
+			contentType : contentType,
+			type : 'POST',
+			data : data,
+			url :  binding.val("@remote"),
+			dataType : "text",
+			success :  function(response) {
+				
+				if(/^\s*</.test(response)){
+					response = Adapter.get("xml").handle(response);
+				}
+				else{
+					response = Adapter.get("json").handle(response);
+				}
+				
+				for(var i in response){
+					binding.appData.get()[i] = response[i];
+				}
+				
+				binding.update(false);
+				binding.appData.update();
+				binding.update(true);
+			}
+		});
 	};
 })
 
@@ -1429,11 +1495,14 @@ jCtrl.extend("Adapter", function() {
 				
 				//元素值更新时更新变量值
 				binding.element.change(function(){
-
+					var value = binding.element.val();
+					if(!isNaN(value)){
+						value = Number(value);
+					}
 					if(test.scope == 1){
-						binding.localData.set(test.key, binding.element.val());
+						binding.localData.set(test.key, value);
 					}else{
-						binding.appData.set(test.key, binding.element.val());
+						binding.appData.set(test.key, value);
 					}
 				});
 				
@@ -1743,7 +1812,7 @@ jCtrl.extend("Adapter", function() {
 		return full.indexOf(start) == 0;
 	},
 	join : function(array , separator){
-		return Array.prototype.join.call(array,separator);
+		return Array.prototype.join.call(array, separator);
 	},
 	trim : function(str){
 		return $.trim(str);
@@ -1753,6 +1822,12 @@ jCtrl.extend("Adapter", function() {
 				|| (typeof JSON.stringify == "undefined"))
 			throw new Error("json2.js");
 		return JSON.stringify(obj);
+	},
+	empty : function(obj){
+		if(obj === undefined || obj === null || obj === ""){
+			return true;
+		}
+		return false;
 	}
 });
 
