@@ -168,6 +168,8 @@ var Data = function(data) {
 				el_bulid = el_bulid + "()";
 			}
 			
+			console.log(el_bulid);
+			
 			return (el_cache[el] = new Function("return " + el_bulid))(self, refer_data, Data.functions);
 			
 		} catch (e) {
